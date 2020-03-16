@@ -1,0 +1,2936 @@
+from kivy.config import Config
+Config.set('graphics', 'resizable', True)
+Config.set('input', 'mouse', 'mouse, multitouch_on_demand')
+from kivy.animation import Animation
+from kivy.properties import (BooleanProperty)
+from kivy.uix.screenmanager import ScreenManager
+from kivy.uix.widget import Widget
+from kivy.uix.slider import Slider
+from kivy.uix.popup import Popup
+#########################################################
+from functools import partial
+import random, timeit, time, copy, math, itertools
+from math import degrees, atan2
+
+from src.A_star import astar
+from src.Info_Button import *
+from src.Empire import Empire
+from src.Support_func import *
+from src.Next_Turn_Button import *
+from src.Screens import *
+
+Window.fullscreen = True
+
+
+class Imperium_Game(ScreenManager):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.menu_screen = MainMenu(name='Menu')
+        self.selection_screen = Selection(name='Selection screen')
+        self.game_screen = MainGame(name='Imperium')
+        self.Tutorial_screen = Tutorial(name='Tutorial')
+        self.rome_screen = Movement_Screen(name='Movement Screen')
+        self.carthage_screen = Diplomacy_Screen(name='Diplomacy Screen')
+        self.egypt_screen = Resources_Screen(name='Resources Screen')
+        self.victory_screen = Victory_Screen(name='Victory screen')
+
+        self.add_widget(self.menu_screen)
+        self.add_widget(self.selection_screen)
+        self.add_widget(self.game_screen)
+        self.add_widget(self.Tutorial_screen)
+        self.add_widget(self.rome_screen)
+        self.add_widget(self.carthage_screen)
+        self.add_widget(self.egypt_screen)
+        self.add_widget(self.victory_screen)
+
+
+class Decisions_Btn(Button):
+    def __init__(self, pos, type, empire, main_widget, **kwargs):
+        super(Decisions_Btn, self).__init__(**kwargs)
+        self.empire = empire
+        self.pos = pos
+        self.border = (0, 0, 0, 0)
+        self.type = type
+        self.text = type.capitalize()
+        self.font_size = GetSystemMetrics(0) / 85
+        self.parent_widget = main_widget
+        self.layout = Widget()
+        self.layout2 = Widget()
+        self.parent_widget.add_widget(self.layout)
+        self.parent_widget.add_widget(self.layout2)
+
+    def on_press(self):
+        self.opacity = 0.5
+        proposal = ""
+        if self.type.find("non aggression") != -1:
+            proposal = "non aggression"
+        elif self.type.find("trade agreement") != -1:
+            proposal = "trade agreement"
+        elif self.type.find("military access") != -1:
+            proposal = "military access"
+        elif self.type.find("peace") != -1:
+            proposal = "peace"
+        elif self.type.find("war") != -1:
+            proposal = "War"
+        elif self.type.find("relations") != -1:
+            proposal = "relations"
+
+        if self.type.find("Agree") != -1:
+            sound = SoundLoader.load('assets/audio/agreement_signed.mp3')
+            sound.play()
+            if self.empire == self.parent_widget.e1:
+                self.parent_widget.dip1[proposal] = True
+            else:
+                self.parent_widget.dip3[proposal] = True
+
+            if proposal == 'peace':
+                sound = SoundLoader.load('assets/audio/peace.mp3')
+                sound.play()
+                self.parent_widget.UPDATESPopup("Peace signed with " + str(self.empire.name))
+                unit_counter = 0
+                worker_counter = 0
+                for unit in self.parent_widget.empire.units:
+                    if self.empire == self.parent_widget.e1:
+                        if unit.e1_locs[unit.loc[0]][unit.loc[1]] == 'O':
+                            self.parent_widget.remove_widget(unit)
+                            if type(unit) == Empire_Unit:
+                                unit_counter += 1
+                            else:
+                                worker_counter += 1
+                    else:
+                        if unit.e2_locs[unit.loc[0]][unit.loc[1]] == 'O':
+                            self.parent_widget.remove_widget(unit)
+                            if type(unit) == Empire_Unit:
+                                unit_counter += 1
+                            else:
+                                worker_counter += 1
+
+                for city in self.parent_widget.empire.cities:
+                    if unit_counter > 0:
+                        self.parent_widget.add_Unit(self.parent_widget.empire, city)
+                        unit_counter -= 1
+
+                if unit_counter > 0:
+                    self.parent_widget.empire.treasury += unit_counter * 1000
+                    self.parent_widget.empire.manpower += unit_counter * 1000
+
+                for city in self.parent_widget.empire.cities:
+                    if worker_counter > 0:
+                        self.parent_widget.add_Worker(self.parent_widget.empire, city)
+                        worker_counter -= 1
+
+                if worker_counter > 0:
+                    self.parent_widget.empire.treasury += unit_counter * 1000
+                    self.parent_widget.empire.manpower += unit_counter * 1000
+
+        elif self.type.find("Disagree") != -1 or self.type.find("Cancel") != -1:
+            play_sound(self)
+            if self.empire == self.parent_widget.e1:
+                self.parent_widget.dip1[proposal] = False
+            else:
+                self.parent_widget.dip3[proposal] = False
+
+        else:
+            if self.empire == self.parent_widget.e1:
+                play_sound(self)
+                if proposal == 'relations':
+                    self.parent_widget.player_diplomacy_Popup(self.empire, proposal, None)
+                elif proposal == 'War' and self.parent_widget.dip1["war"] != True:
+                    self.parent_widget.e1.state = 'War'
+                    self.parent_widget.empire.state = 'War'
+                    self.parent_widget.dip1["peace"] = False
+                    self.parent_widget.dip1["war"] = True
+                    self.parent_widget.player_diplomacy_Popup(self.empire, proposal, None)
+
+                elif proposal == 'Peace' and self.parent_widget.dip1["peace"] != True:
+                    if self.parent_widget.supremacy(self.empire, self.parent.empire) == True:
+                        self.parent_widget.player_diplomacy_Popup(self.empire, proposal, "disagrees ")
+                    elif self.parent_widget.supremacy(self.empire, self.parent.empire) == False:
+                        self.parent_widget.player_diplomacy_Popup(self.empire, proposal, "agrees ")
+                        self.empire.state = 'peace'
+                        self.parent_widget.dip1["peace"] = True
+                        self.parent_widget.dip1["war"] = False
+                        self.parent_widget.empire = 'peace'
+
+                else:
+                    if proposal == "non aggression" and self.parent_widget.dip1["non aggression"] == False and \
+                            self.parent_widget.dip1["relations"] > 10:
+                        self.parent_widget.player_diplomacy_Popup(self.empire, proposal, "agrees ")
+                        self.parent_widget.dip1["non aggression"] = True
+                    elif proposal == "non aggression" and (
+                            self.parent_widget.dip1["non aggression"] == True or self.parent_widget.dip1[
+                        "relations"] < 10):
+                        self.parent_widget.player_diplomacy_Popup(self.empire, proposal, "disagrees ")
+
+                    if proposal == "trade agreement" and self.parent_widget.dip1["trade agreement"] == False and \
+                            self.parent_widget.dip1["trade agreement"] > -20:
+                        self.parent_widget.player_diplomacy_Popup(self.empire, proposal, "agrees ")
+                        self.parent_widget.dip1["trade agreement"] = True
+
+                    elif proposal == "trade agreement" and (
+                            self.parent_widget.dip1["trade agreement"] == True or self.parent_widget.dip1[
+                        "trade agreement"] < -20):
+                        self.parent_widget.player_diplomacy_Popup(self.empire, proposal, "disagrees ")
+
+                    if proposal == "military access" and self.parent_widget.dip1["military access"] == False and \
+                            self.parent_widget.dip1["military access"] > 30:
+                        self.parent.player_diplomacy_Popup(self.empire, proposal, "agrees ")
+                        self.parent_widget.dip1["military access"] = True
+                    elif proposal == "military access" and (
+                            self.parent_widget.dip1["military access"] == True or self.parent_widget.dip1[
+                        "military access"] < 10):
+                        self.parent_widget.player_diplomacy_Popup(self.empire, proposal, "disagrees ")
+
+            elif self.empire == self.parent_widget.e2:
+                play_sound(self)
+                if proposal == 'relations':
+                    self.parent_widget.player_diplomacy_Popup(self.empire, proposal, None)
+                elif proposal == 'War' and self.parent_widget.dip3["war"] != True:
+                    self.parent_widget.e2.state = 'War'
+                    self.parent_widget.empire.state = 'War'
+                    self.parent_widget.dip3["peace"] = False
+                    self.parent_widget.dip3["war"] = True
+                    self.parent_widget.player_diplomacy_Popup(self.empire, proposal, None)
+
+                elif proposal == 'Peace' and self.parent_widget.dip3["peace"] != True:
+                    if self.parent.supremacy(self.empire, self.parent.empire) == True:
+                        self.parent.player_diplomacy_Popup(self.empire, proposal, "disagrees ")
+                    elif self.parent.supremacy(self.empire, self.parent.empire) == False:
+                        self.parent.player_diplomacy_Popup(self.empire, proposal, "agrees ")
+                        self.empire.state = 'peace'
+                        self.parent_widget.dip3["peace"] = True
+                        self.parent_widget.dip3["war"] = False
+                        self.parent_widget.empire = 'peace'
+
+                else:
+                    if proposal == "non aggression" and self.parent_widget.dip3["non aggression"] == False and \
+                            self.parent_widget.dip3["relations"] > 10:
+                        self.parent_widget.player_diplomacy_Popup(self.empire, proposal, "agrees ")
+                        self.parent.dip3["non aggression"] = True
+                    elif proposal == "non aggression" and (
+                            self.parent_widget.dip3["non aggression"] == True or self.parent_widget.dip3[
+                        "relations"] < 10):
+                        self.parent_widget.player_diplomacy_Popup(self.empire, proposal, "disagrees ")
+
+                    if proposal == "trade agreement" and self.parent_widget.dip3["trade agreement"] == False and \
+                            self.parent_widget.dip3["trade agreement"] > -20:
+                        self.parent_widget.player_diplomacy_Popup(self.empire, proposal, "agrees ")
+                        self.parent_widget.dip3["trade agreement"] = True
+
+                    elif proposal == "trade agreement" and (
+                            self.parent_widget.dip3["trade agreement"] == True or self.parent_widget.dip3[
+                        "trade agreement"] < -20):
+                        self.parent_widget.player_diplomacy_Popup(self.empire, proposal, "disagrees ")
+
+                    if proposal == "military access" and self.parent_widget.dip3["military access"] == False and \
+                            self.parent_widget.dip3["military access"] > 30:
+                        self.parent_widget.player_diplomacy_Popup(self.empire, proposal, "agrees ")
+                        self.parent_widget.dip3["military access"] = True
+
+                    elif proposal == "military access" and (
+                            self.parent_widget.dip3["military access"] == True or self.parent_widget.dip3[
+                        "military access"] < 10):
+                        self.parent_widget.player_diplomacy_Popup(self.empire, proposal, "disagrees ")
+
+    def on_release(self):
+        self.opacity = 1
+        if self.type == 'Recruit Soldier':
+            sound = SoundLoader.load('assets/audio/add_unit.mp3')
+            sound.play()
+            self.parent.add_Unit(self.parent.empire, self.parent.empire.capital)
+        elif self.type == 'Recruit Worker':
+            sound = SoundLoader.load('assets/audio/add_unit.mp3')
+            sound.play()
+            self.parent.add_Worker(self.parent.empire, self.parent.empire.capital)
+        elif self.type == 'Recruit Warship':
+            sound = SoundLoader.load('assets/audio/add_unit.mp3')
+            sound.play()
+            self.parent.add_WarShip(self.parent.empire, self.parent.empire.capital)
+        elif self.type == 'Diplomacy':
+            sound = SoundLoader.load('assets/audio/diplomacy_click.mp3')
+            sound.play()
+            if self.layout.children == []:
+                if self.parent_widget.e1.state != 'Defeat':
+                    self.layout.add_widget(
+                        Image(source=self.parent_widget.e1.img, pos=(Window.width / 3 + 80, Window.height / 1.2)))
+                    i = 0
+                    for title in self.parent_widget.dip1:
+                        self.layout.add_widget(Decisions_Btn((Window.width / 3, Window.height / 1.4 - i * 75), title,
+                                                             self.parent_widget.e1, self.parent, size=(250, 75),
+                                                             background_normal=self.parent_widget.titles_source,
+                                                             background_down=self.parent_widget.titles_source_d))
+                        i += 1
+                        if title != 'war' and title != 'peace' and title != 'relations':
+                            self.layout.add_widget(
+                                Decisions_Btn((Window.width / 3, Window.height / 1.4 - i * 75), 'Cancel ' + title,
+                                              self.parent_widget.e1, self.parent, size=(250, 75),
+                                              background_normal=self.parent_widget.titles_source,
+                                              background_down=self.parent_widget.titles_source_d))
+                            i += 1
+
+                if self.parent_widget.e2.state != 'Defeat':
+                    self.layout.add_widget(
+                        Image(source=self.parent_widget.e2.img, pos=(Window.width / 2 + 80, Window.height / 1.2)))
+                    i = 0
+                    for title in self.parent_widget.dip3:
+                        self.layout2.add_widget(Decisions_Btn((Window.width / 2, Window.height / 1.4 - i * 75), title,
+                                                              self.parent_widget.e2, self.parent, size=(250, 75),
+                                                              background_normal=self.parent_widget.titles_source,
+                                                              background_down=self.parent_widget.titles_source_d))
+                        i += 1
+                        if title != 'war' and title != 'peace' and title != 'relations':
+                            self.layout2.add_widget(
+                                Decisions_Btn((Window.width / 2, Window.height / 1.4 - i * 75), 'Cancel ' + title,
+                                              self.parent_widget.e2, self.parent, size=(250, 75),
+                                              background_normal=self.parent_widget.titles_source,
+                                              background_down=self.parent_widget.titles_source_d))
+                            i += 1
+
+
+            else:
+                self.layout.clear_widgets()
+                self.layout2.clear_widgets()
+
+
+class Board(Widget):
+    counter = NumericProperty(0)
+    selected = ObjectProperty(None)
+    selected_hex = ObjectProperty(None)
+    sel = BooleanProperty(False)
+
+    def __init__(self, player_empire, parent_widget, **kwargs):
+        super(Board, self).__init__(**kwargs)
+        self.size = (3200, 2500)
+        self.size_hint = (None, None)
+        self.arr = []
+        self.player_empire = player_empire
+        background = CoreImage(os.path.join('assets', 'images', 'finalmap.png'))
+        empires = CoreImage(os.path.join('assets', 'images', 'empires.png'))
+        self.Rome = Empire(8300, 5500, (22, 29), "Rome", parent_widget)
+        self.Carthage = Empire(5300, 5500, (14, 22), "Carthage", parent_widget)
+        self.Egypt = Empire(7300, 5500, (4, 58), "Egypt", parent_widget)
+
+        # 48 , 70
+        for i in range(48):
+            for j in range(70):
+                loc = (i, j)
+                image_read_x = j * dis_width + 10
+                if j % 2 == 0:
+                    pos = (j * 45, 26 + 50 / 2 + i * 50)
+                    image_read_y = background.height - dis_height - i * dis_height
+                else:
+                    pos = (j * 45, 26 + i * 50)
+                    image_read_y = background.height - dis_height / 2 - i * dis_height
+
+                if background.read_pixel(image_read_x, image_read_y) == green:
+                    self.hex = HexTile(pos, loc, "Grasslands")
+                    self.add_widget(self.hex)
+                    if empires.read_pixel(image_read_x, image_read_y) == red:
+                        self.hex = Empire_HexTile(pos, loc, "Roman")
+                        self.add_widget(self.hex)
+                        self.Rome.add_locations(j, i)
+                        self.Rome.tiles += 1
+                    elif empires.read_pixel(image_read_x, image_read_y) == purple:
+                        self.hex = Empire_HexTile(pos, loc, "Carthaginian")
+                        self.add_widget(self.hex)
+                        self.Carthage.add_locations(j, i)
+                        self.Carthage.tiles += 1
+                    elif empires.read_pixel(image_read_x, image_read_y) == yellow2:
+                        self.hex = Empire_HexTile(pos, loc, "Egyptian")
+                        self.add_widget(self.hex)
+                        self.Egypt.add_locations(j, i)
+                        self.Egypt.tiles += 1
+                    else:
+                        self.hex = Empire_HexTile(pos, loc, "Grasslands")
+                        self.add_widget(self.hex)
+
+                elif background.read_pixel(image_read_x, image_read_y) == yellow:
+                    self.hex = HexTile(pos, loc, "Desert")
+                    self.add_widget(self.hex)
+                    if empires.read_pixel(image_read_x, image_read_y) == red:
+                        self.hex = Empire_HexTile(pos, loc, "Roman")
+                        self.add_widget(self.hex)
+                        self.Rome.add_locations(j, i)
+                        self.Rome.tiles += 1
+                    elif empires.read_pixel(image_read_x, image_read_y) == purple:
+                        self.hex = Empire_HexTile(pos, loc, "Carthaginian")
+                        self.add_widget(self.hex)
+                        self.Carthage.add_locations(j, i)
+                        self.Carthage.tiles += 1
+                    elif empires.read_pixel(image_read_x, image_read_y) == yellow2:
+                        self.hex = Empire_HexTile(pos, loc, "Egyptian")
+                        self.add_widget(self.hex)
+                        self.Egypt.add_locations(j, i)
+                        self.Egypt.tiles += 1
+                    else:
+                        self.hex = Empire_HexTile(pos, loc, "Desert")
+                        self.add_widget(self.hex)
+
+                elif background.read_pixel(image_read_x, image_read_y) == blue:
+                    self.hex = HexTile(pos, loc, "Sea")
+                    self.add_widget(self.hex)
+
+                elif background.read_pixel(image_read_x, image_read_y) == brown:
+                    self.hex = HexTile(pos, loc, "Mountains")
+                    self.add_widget(self.hex)
+
+                elif background.read_pixel(image_read_x, image_read_y) == water_pass:
+                    self.hex = HexTile(pos, loc, "pass")
+                    self.add_widget(self.hex)
+
+                else:
+                    self.hex = HexTile(pos, loc, "City")
+                    self.add_widget(self.hex)
+                    if empires.read_pixel(image_read_x, image_read_y) == red:
+                        self.hex = Empire_HexTile(pos, loc, "Roman")
+                        self.add_widget(self.hex)
+                        self.hex.source = os.path.join('assets', 'images', '35_rome_hex_city.png')
+                        self.Rome.add_locations(j, i)
+                        self.Rome.tiles += 1
+                        self.Rome.cities.append((i, j))
+
+                    elif empires.read_pixel(image_read_x, image_read_y) == purple:
+                        self.hex = Empire_HexTile(pos, loc, "Carthaginian")
+                        self.add_widget(self.hex)
+                        self.hex.source = os.path.join('assets', 'images', '36_carthage_hex_city.png')
+                        self.Carthage.add_locations(j, i)
+                        self.Carthage.tiles += 1
+                        self.Carthage.cities.append((i, j))
+
+                    elif empires.read_pixel(image_read_x, image_read_y) == yellow2:
+                        self.hex = Empire_HexTile(pos, loc, "Egyptian")
+                        self.add_widget(self.hex)
+                        self.hex.source = os.path.join('assets', 'images', '37_egypt_hex_city.png')
+                        self.Egypt.add_locations(j, i)
+                        self.Egypt.tiles += 1
+                        self.Egypt.cities.append((i, j))
+
+                    else:
+                        self.hex = Empire_HexTile(pos, loc, "City")
+                        self.add_widget(self.hex)
+
+    def on_touch_down(self, touch):
+        self.touch = touch
+        for child in self.children:
+            if (type(child) == Empire_Unit or type(child) == Empire_Worker or type(
+                    child) == Empire_Warship) and child.score < 3:
+                if child.collide_point(*touch.pos) and child.name == self.player_empire:
+                    if touch.button == 'left' and touch.is_double_tap == False and touch.is_triple_tap == False:
+                        self.selected = child
+                        self.sel = True
+                        if child.state == 'normal':
+                            if self.player_empire == 'Rome':
+                                if type(child) == Empire_Unit:
+                                    voicelines = [os.path.join('assets', 'audio', 'rome_soldier_voiceline1.mp3'),
+                                                  os.path.join('assets', 'audio', 'rome_soldier_voiceline2.mp3'),
+                                                  os.path.join('assets', 'audio', 'rome_soldier_voiceline3.mp3'),
+                                                  os.path.join('assets', 'audio', 'rome_soldier_voiceline4.mp3')]
+                                elif type(child) == Empire_Warship:
+                                    voicelines = [os.path.join('assets', 'audio', 'rome_fleet_voiceline1.mp3'),
+                                                  os.path.join('assets', 'audio', 'rome_fleet_voiceline2.mp3'),
+                                                  os.path.join('assets', 'audio', 'rome_fleet_voiceline3.mp3')]
+                                else:
+                                    voicelines = [os.path.join('assets', 'audio', 'rome_worker_voiceline.mp3')]
+
+                            elif self.player_empire == 'Carthage':
+                                if type(child) == Empire_Unit:
+                                    voicelines = [os.path.join('assets', 'audio', 'carthage_soldier_voiceline1.mp3'),
+                                                  os.path.join('assets', 'audio', 'carthage_soldier_voiceline2.mp3'),
+                                                  os.path.join('assets', 'audio', 'carthage_soldier_voiceline3.mp3'),
+                                                  os.path.join('assets', 'audio', 'carthage_soldier_voiceline4.mp3')]
+                                elif type(child) == Empire_Warship:
+                                    voicelines = [os.path.join('assets', 'audio', 'carthage_fleet_voiceline1.mp3'),
+                                                  os.path.join('assets', 'audio', 'carthage_fleet_voiceline2.mp3'),
+                                                  os.path.join('assets', 'audio', 'carthage_fleet_voiceline3.mp3'),
+                                                  os.path.join('assets', 'audio', 'carthage_fleet_voiceline4.mp3')]
+                                else:
+                                    voicelines = [os.path.join('assets', 'audio', 'worker_voiceline.mp3')]
+
+                            else:
+                                if type(child) == Empire_Unit:
+                                    voicelines = [os.path.join('assets', 'audio', 'egypt_soldier_voiceline1.mp3'),
+                                                  os.path.join('assets', 'audio', 'egypt_soldier_voiceline2.mp3'),
+                                                  os.path.join('assets', 'audio', 'egypt_soldier_voiceline3.mp3'),
+                                                  os.path.join('assets', 'audio', 'egypt_soldier_voiceline4.mp3')]
+                                elif type(child) == Empire_Warship:
+                                    voicelines = ['egypt_fleet_voiceline1.mp3', 'egypt_fleet_voiceline2.mp3',
+                                                  'egypt_fleet_voiceline3.mp3', 'egypt_fleet_voiceline4.mp3']
+                                else:
+                                    voicelines = [os.path.join('assets', 'audio', 'worker_voiceline.mp3')]
+
+                            sound = SoundLoader.load(random.choice(voicelines))
+                            sound.play()
+
+                        for child in self.children:
+                            if type(child) == Empire_Unit or type(child) == Empire_Worker or type(
+                                    child) == Empire_Warship:
+                                child.remove_tiles()
+                        # dispatch the touch as usual to children
+                        # the coordinate in the touch is now in local space
+                        return super(Board, self).on_touch_down(touch)
+
+                    if touch.button == 'right' and type(child) == Empire_Unit and \
+                            self.parent.parent.empire.tile_arr[child.loc[0]][child.loc[1]] != 'O':
+                        for hex in self.children:
+                            if type(hex) == Empire_HexTile and hex.loc[0] == child.loc[0] and hex.loc[1] == \
+                                    child.loc[1]:
+                                if self.player_empire == 'Rome':
+                                    hex.type = "Roman"
+                                    if locations[child.loc[0]][child.loc[1]] == 'c':
+                                        hex.source = os.path.join('assets', 'images', '35_rome_hex_city.png')
+                                    else:
+                                        hex.source = os.path.join('assets', 'images', '35_rome_hex.png')
+                                elif self.player_empire == 'Carthage':
+                                    hex.type = "Carthaginian"
+                                    if locations[child.loc[0]][child.loc[1]] == 'c':
+                                        hex.source = os.path.join('assets', 'images', '36_carthage_hex_city.png')
+                                    else:
+                                        hex.source = os.path.join('assets', 'images', '36_carthage_hex.png')
+                                elif self.player_empire == 'Egypt':
+                                    hex.type = "Egyptian"
+                                    if locations[child.loc[0]][child.loc[1]] == 'c':
+                                        hex.source = os.path.join('assets', 'images', '37_egypt_hex_city.png')
+                                    else:
+                                        hex.source = os.path.join('assets', 'images', '37_egypt_hex.png')
+
+                                sound = SoundLoader.load('assets/audio/soldier_action.mp3')
+                                sound.play()
+
+                                self.parent.parent.empire.add_locations(hex.loc[1], hex.loc[0])
+                                self.parent.parent.empire.tiles += 1
+                                child.score += 1
+                                self.parent.parent.score += 1
+                                print(self.parent.parent.max_score, self.parent.parent.score)
+
+                                if self.parent.parent.empire.state == 'War':
+                                    if self.parent.parent.e1.state == 'War' and \
+                                            self.parent.parent.e1.tile_arr[hex.loc[0]][hex.loc[1]] == 'O':
+                                        self.parent.parent.e1.tile_arr[hex.loc[0]][hex.loc[1]] = 1
+                                        self.parent.parent.e1.tiles -= 1
+                                    elif self.parent.parent.e2.state == 'War' and \
+                                            self.parent.parent.e2.tile_arr[hex.loc[0]][hex.loc[1]] == 'O':
+                                        self.parent.parent.e2.tile_arr[hex.loc[0]][hex.loc[1]] = 1
+                                        self.parent.parent.e2.tiles -= 1
+                                break
+
+                        return super(Board, self).on_touch_up(touch)
+
+                    elif touch.button == 'right' and type(child) == Empire_Worker and \
+                            self.parent.parent.empire.tile_arr[child.loc[0]][child.loc[1]] == 'O' and \
+                            locations[child.loc[0]][child.loc[1]] != 'c':
+                        for hex in self.children:
+                            if type(hex) == Empire_HexTile and hex.loc[0] == child.loc[0] and hex.loc[1] == \
+                                    child.loc[1] and hex.source != os.path.join('assets', 'images', 'grass_hex.png'):
+                                child.score += 1
+                                self.parent.parent.score += 1
+                                print(self.parent.parent.max_score, self.parent.parent.score)
+                                hex.source = os.path.join('assets', 'images', 'grass_hex.png')
+                                child.opacity = 0.5
+                                child.opacity = 1
+                                self.parent.parent.empire.farms += 1
+                                self.parent.parent.empire.farm_locs[hex.loc[0]][hex.loc[1]] = 'O'
+                                sound = SoundLoader.load('assets/audio/worker_action.mp3')
+                                sound.play()
+                                break
+                        return super(Board, self).on_touch_up(touch)
+
+                    elif touch.button == 'right' and type(child) == Empire_Warship:
+                        if child.loc[1] % 2 == 0:
+                            for i in range(child.loc[0], child.loc[0] + 2):
+                                for j in range(child.loc[1] - 1, child.loc[1] + 2):
+                                    if (locations[i][j] == 'g' or locations[i][j] == 'd' or locations[i][j] == 'c') and \
+                                            self.parent.parent.e1.tile_arr[i][j] != 'O' and \
+                                            self.parent.parent.e2.tile_arr[i][j] != 'O':
+                                        self.parent.parent.add_Unit(self.parent.parent.empire, (i, j))
+                                        self.parent.parent.add_Worker(self.parent.parent.empire, (i, j))
+                                        child.score += 1
+                                        self.parent.parent.score += 1
+                                        sound = SoundLoader.load('assets/audio/naval_invasion.mp3')
+                                        sound.play()
+                                        return super(Board, self).on_touch_up(touch)
+
+                            return super(Board, self).on_touch_up(touch)
+
+                        else:
+                            for i in range(child.loc[0] - 1, child.loc[0] + 2):
+                                for j in range(child.loc[1] - 1, child.loc[1] + 2):
+                                    if (locations[i][j] == 'g' or locations[i][j] == 'd' or locations[i][j] == 'c') and \
+                                            self.parent.parent.e1.tile_arr[i][j] != 'O' and \
+                                            self.parent.parent.e2.tile_arr[i][j] != 'O':
+                                        self.parent.parent.add_Unit(self.parent.parent.empire, (i, j))
+                                        self.parent.parent.add_Worker(self.parent.parent.empire, (i, j))
+                                        child.score += 1
+                                        self.parent.parent.score += 1
+                                        sound = SoundLoader.load('assets/audio/naval_invasion.mp3')
+                                        sound.play()
+                                        return super(Board, self).on_touch_up(touch)
+
+                            return super(Board, self).on_touch_upn(touch)
+
+                    elif touch.button == 'middle' and (type(child) == Empire_Unit or type(child) == Empire_Warship):
+                        if self.parent.parent.empire.manpower >= 500:
+                            child.power += 500
+                            self.parent.parent.empire.manpower -= 500
+                            self.parent.parent.update_labels(self.parent.parent.empire)
+                            sound = SoundLoader.load('assets/audio/add_unit.mp3')
+                            sound.play()
+                            self.parent.parent.UPDATESPopup("Added 500 men to unit at " + str(child.loc))
+                        else:
+                            self.parent.parent.UPDATESPopup("NO MORE MEN!")
+                        return super(Board, self).on_touch_up(touch)
+
+            elif child.collide_point(*touch.pos) and (type(child) == Empire_HexTile or type(child) == HexTile):
+                if touch.button == 'right':
+                    sound = SoundLoader.load('assets/audio/button_click.mp3')
+                    sound.play()
+                    self.hex_info(child)
+                else:
+                    child.opacity = 0.5
+                    self.selected_hex = child
+                    if self.selected_hex.type == 'white' and touch.button == 'left':
+                        return super(Board, self).on_touch_up(touch)
+                break
+
+    def on_touch_up(self, touch):
+        if self.selected_hex != None:
+            self.selected_hex.opacity = 1
+
+        if type(self.selected) == Empire_Unit or type(self.selected) == Empire_Worker or type(
+                self.selected) == Empire_Warship and self.selected.score < 3:
+            if self.selected_hex != None and self.valid(
+                    touch) and self.selected_hex.type == 'white' and touch.button == 'left':
+
+                if self.player_empire == 'Rome':
+                    if type(self.selected) == Empire_Unit:
+                        voicelines = [os.path.join('assets', 'audio', 'rome_soldier_move1.mp3'),
+                                      os.path.join('assets', 'audio', 'rome_soldier_move2.mp3'),
+                                      os.path.join('assets', 'audio', 'rome_soldier_move3.mp3'),
+                                      os.path.join('assets', 'audio', 'rome_soldier_move4.mp3')]
+                    elif type(self.selected) == Empire_Warship:
+                        voicelines = [os.path.join('assets', 'audio', 'rome_fleet_move1.mp3'),
+                                      os.path.join('assets', 'audio', 'rome_fleet_move2.mp3'),
+                                      os.path.join('assets', 'audio', 'rome_fleet_move3.mp3')]
+                    else:
+                        voicelines = [os.path.join('assets', 'audio', 'worker_move.mp3')]
+
+                elif self.player_empire == 'Carthage':
+                    if type(self.selected) == Empire_Unit:
+                        voicelines = [os.path.join('assets', 'audio', 'carthage_soldier_move1.mp3'),
+                                      os.path.join('assets', 'audio', 'carthage_soldier_move2.mp3'),
+                                      os.path.join('assets', 'audio', 'carthage_soldier_move3.mp3'),
+                                      os.path.join('assets', 'audio', 'carthage_soldier_move4.mp3')]
+                    elif type(self.selected) == Empire_Warship:
+                        voicelines = [os.path.join('assets', 'audio', 'carthage_fleet_move1.mp3'),
+                                      os.path.join('assets', 'audio', 'carthage_fleet_move2.mp3'),
+                                      os.path.join('assets', 'audio', 'carthage_fleet_move3.mp3')]
+                    else:
+                        voicelines = [os.path.join('assets', 'audio', 'worker_move.mp3')]
+
+                else:
+                    if type(self.selected) == Empire_Unit:
+                        voicelines = [os.path.join('assets', 'audio', 'egypt_soldier_move1.mp3'),
+                                      os.path.join('assets', 'audio', 'egypt_soldier_move2.mp3'),
+                                      os.path.join('assets', 'audio', 'egypt_soldier_move3.mp3'),
+                                      os.path.join('assets', 'audio', 'egypt_soldier_move4.mp3')]
+                    elif type(self.selected) == Empire_Warship:
+                        voicelines = [os.path.join('assets', 'audio', 'egypt_fleet_move1.mp3'),
+                                      os.path.join('assets', 'audio', 'egypt_fleet_move2.mp3'),
+                                      os.path.join('assets', 'audio', 'egypt_fleet_move3.mp3'),
+                                      os.path.join('assets', 'audio', 'egypt_fleet_move4.mp3')]
+                    else:
+                        voicelines = ['worker_move.mp3']
+
+                sound = SoundLoader.load(random.choice(voicelines))
+                sound.play()
+
+                x = int((touch.pos[0]) / 45)
+                if x % 2 == 0:
+                    y = int((touch.pos[1] - 20) / 50) - 1
+                    pos = (7 + x * 45, (y + 1) * 50 + 8)
+                else:
+                    y = int((touch.pos[1] - 20) / 50)
+                    pos = (7 + x * 45, y * 50 + 65 / 2)
+
+                self.angle = degrees(atan2(touch.y - self.center_y, touch.x - self.center_x))
+                Animation(x=pos[0], y=pos[1], duration=0.5, angle=self.angle).start(self)
+                self.selected.pos = pos
+                for hex in self.children:
+                    if type(hex) == Empire_HexTile and hex.loc == self.selected.loc and hex.occupied == True:
+                        hex.occupied = False
+                    if type(hex) == Empire_HexTile and hex.loc[0] == y and hex.loc[1] == x:
+                        hex.occupied = True
+
+                self.selected.state = 'normal'
+                self.selected.loc = (y, x)
+                self.selected.score += 1
+                self.parent.parent.score += 1
+                print(self.parent.parent.max_score, self.parent.parent.score)
+
+            if self.sel == True:
+                self.sel = False
+
+    def valid(self, touch):
+        x = int((touch.pos[0]) / 45)
+        if x % 2 == 0:
+            y = int((touch.pos[1] - 20) / 50) - 1
+        else:
+            y = int((touch.pos[1] - 20) / 50)
+
+        if self.selected.loc[1] == x and self.selected.loc[0] == y:
+            return False
+
+        for hex in self.children:
+            if type(hex) == Empire_HexTile and hex.loc[0] == y and hex.loc[
+                1] == x and hex.occupied == True and self.parent.parent.empire.state != 'War':
+                return False
+
+        if locations[y][x] == 'm':
+            return False
+
+        if locations[y][x] == 'w' and type(self.selected) != Empire_Warship:
+            return False
+        elif type(self.selected) == Empire_Warship and locations[y][x] != 'w' and locations[y][x] != 'p':
+            return False
+
+        if self.selected.e1_locs[y][x] == 'O' or self.selected.e2_locs[y][
+            x] == 'O' and self.parent.parent.empire.state != 'War':
+            if self.parent.parent.dip1["military access"] == False and self.parent.parent.dip3[
+                "military access"] == False:
+                return False
+            elif (self.selected.e1_locs[y][x] == 'O' and self.parent.parent.dip1["military access"] == True) or (
+                    self.selected.e2_locs[y][x] == 'O' and self.parent.parent.dip3["military access"] == True):
+                return True
+        elif self.parent.parent.empire.state == 'War' and (
+                (self.parent.parent.e1.state == 'War' and self.parent.parent.e1.tile_arr[y][x] == 'O') or (
+                self.parent.parent.e2.state == 'War' and self.parent.parent.e2.tile_arr[y][x] == 'O')):
+            for child in self.children:
+                if self.parent.parent.e1.state == 'War':
+                    if ((type(child) == Empire_Unit and type(self.selected) == Empire_Unit) or (
+                            type(child) == Empire_Warship and type(self.selected) == Empire_Warship)) and child.loc == (
+                            y, x) and child.name == self.parent.parent.e1.name:
+                        if child.power < self.selected.power:
+                            self.selected.power -= child.power
+                            self.remove_widget(child)
+                            if type(child) == Empire_Unit:
+                                self.parent.parent.e1.army -= 1
+                            else:
+                                self.parent.parent.e1.ships -= 1
+                            self.parent.parent.e1.units.remove(child)
+
+                        elif child.power > self.selected.power:
+                            child.power -= self.selected.power
+                            self.remove_widget(self.selected)
+                            if type(child) == Empire_Unit:
+                                self.parent.parent.empire.army -= 1
+                            else:
+                                self.parent.parent.empire.ships -= 1
+                            self.parent.parent.empire.units.remove(child)
+                            self.parent.parent.Lost_unit(self.selected.loc)
+
+                        break
+
+                    elif type(child) == Empire_Worker and child.loc == (
+                            y, x) and child.name == self.parent.parent.e1.name:
+                        self.remove_widget(child)
+                        self.parent.parent.e1.workers -= 1
+                        self.parent.parent.e1.units.remove(child)
+                        break
+
+                elif self.parent.parent.e2.state == 'War':
+                    if ((type(child) == Empire_Unit and type(self.selected) == Empire_Unit) or (
+                            type(child) == Empire_Warship and type(self.selected) == Empire_Warship)) and child.loc == (
+                            y, x) and child.name == self.parent.parent.e2.name:
+                        if child.power < self.selected.power:
+                            self.selected.power -= child.power
+                            self.remove_widget(child)
+                            if type(child) == Empire_Unit:
+                                self.parent.parent.e2.army -= 1
+                            else:
+                                self.parent.parent.e2.ships -= 1
+                            self.parent.parent.e2.units.remove(child)
+
+                        elif child.power > self.selected.power:
+                            child.power -= self.selected.power
+                            self.remove_widget(self.selected)
+                            if type(child) == Empire_Unit:
+                                self.parent.parent.empire.army -= 1
+                            else:
+                                self.parent.parent.empire.ships -= 1
+                            self.parent.parent.Lost_unit(self.selected.loc)
+                            self.parent.parent.empire.units.remove(child)
+                        break
+
+                    elif type(child) == Empire_Worker and child.loc == (
+                            y, x) and child.name == self.parent.parent.e2.name:
+                        self.remove_widget(child)
+                        self.parent.parent.e2.workers -= 1
+                        self.parent.parent.e2.units.remove(child)
+                        break
+
+            return True
+
+        if (self.selected.loc[1] - x < 3 and self.selected.loc[1] - x > -3) and (
+                self.selected.loc[0] - y < 3 and self.selected.loc[0] - y > -3):
+
+            if self.selected.loc[0] < y and self.selected.loc[1] % 2 != 0 and self.selected.loc[1] - x != 0:
+                return False
+            elif self.selected.loc[0] > y and self.selected.loc[1] % 2 == 0 and self.selected.loc[1] - x != 0:
+                return False
+            else:
+                return True
+        else:
+            return False
+
+    def hex_info(self, hex):
+        layout = GridLayout(cols=1, padding=10)
+        type = Label(text='Hex is ' + hex.type, font_size=24)
+        layout.add_widget(type)
+        pos = Label(text='Position ' + str(hex.loc[0]) + " , " + str(hex.loc[1]), font_size=24)
+        layout.add_widget(pos)
+        b = Button(text="RETURN")
+        layout.add_widget(b)
+        popup = Popup(title="Hex stats", content=layout, size_hint=(None, None), size=(400, 400), auto_dismiss=False)
+        popup.open()
+        b.bind(on_release=popup.dismiss)
+
+
+class MainGame(Screen):
+    def __init__(self, **kwargs):
+        super(MainGame, self).__init__(**kwargs)
+        self.size = (1920, 1080)
+        self.game_started = False
+        self.start_time = None
+        self.scrlv = ScrollView()
+        Window.bind(on_resize=self.on_window_resize)
+
+    def on_window_resize(self, window, width, height):
+        self.width = width
+        self.height = height
+        self.scrlv.size = (self.width, self.height)
+
+    def initialize(self, play_empire):
+        self.player_empire = play_empire
+        self.init_map()
+        self.init_game()
+
+    def exit(self, instance):
+        App.get_running_app().stop()
+
+    def init_map(self):
+        # USER MAP INIT
+        self.b = Board(self.player_empire, self)
+        if self.player_empire == "Rome":
+            self.scrlv = ScrollView(size=(GetSystemMetrics(0), GetSystemMetrics(1)), size_hint=(None, None),
+                                    bar_color=(1.0, 1.0, 1.0, 0), scroll_x=0.4, scroll_y=0.35)
+            self.banner = Image(source=os.path.join('assets', 'images', 'rome_banner.png'), allow_stretch=True,
+                                keep_ratio=False, size_hint=(.1, .2), pos=(0, self.height * 0.8))
+            self.titles_source = os.path.join('assets', 'images', '57_header.png')
+            self.titles_source_d = os.path.join('assets', 'images', '57_header_d.png')
+            self.empire = self.b.Rome
+            self.empire.img = os.path.join('assets', 'images', 'rome_symbol.png')
+            self.e1 = self.b.Carthage
+            self.e1.img = os.path.join('assets', 'images', 'carthage_symbol.png')
+            self.e2 = self.b.Egypt
+            self.e2.img = os.path.join('assets', 'images', 'egypt_symbol.png')
+
+        elif self.player_empire == "Carthage":
+            self.scrlv = ScrollView(size=(GetSystemMetrics(0), GetSystemMetrics(1)), size_hint=(None, None),
+                                    bar_color=(1.0, 1.0, 1.0, 0), scroll_x=0.2, scroll_y=0.2)
+            self.banner = Image(source=os.path.join('assets', 'images', 'carthage_banner.png'), allow_stretch=True,
+                                keep_ratio=False, size_hint=(.1, .2), pos=(0, self.height * 0.8))
+            self.titles_source = os.path.join('assets', 'images', '58_header2.png')
+            self.titles_source_d = os.path.join('assets', 'images', '58_header2_d.png')
+            self.empire = self.b.Carthage
+            self.empire.img = os.path.join('assets', 'images', 'carthage_symbol.png')
+            self.e1 = self.b.Rome
+            self.e1.img = os.path.join('assets', 'images', 'rome_symbol.png')
+            self.e2 = self.b.Egypt
+            self.e2.img = os.path.join('assets', 'images', 'egypt_symbol.png')
+
+        elif self.player_empire == "Egypt":
+            self.scrlv = ScrollView(size=(GetSystemMetrics(0), GetSystemMetrics(1)), size_hint=(None, None),
+                                    bar_color=(1.0, 1.0, 1.0, 0), scroll_x=1, scroll_y=0)
+            self.banner = Image(source='egypt_banner.png', allow_stretch=True, keep_ratio=False, size_hint=(.1, .2),
+                                pos=(0, self.height * 0.8))
+            self.titles_source = os.path.join('assets', 'images', '59_header3.png')
+            self.titles_source_d = os.path.join('assets', 'images', '59_header3_d.png')
+            self.empire = self.b.Egypt
+            self.empire.img = os.path.join('assets', 'images', 'egypt_symbol.png')
+            self.e1 = self.b.Rome
+            self.e1.img = os.path.join('assets', 'images', 'rome_symbol.png')
+            self.e2 = self.b.Carthage
+            self.e2.img = os.path.join('assets', 'images', 'carthage_symbol.png')
+
+        self.scrlv.add_widget(self.b)
+
+        s = Slider(min=0, max=1, value=0.5, orientation='vertical', step=0.01, size_hint=(None, None),
+                   size=(50, self.scrlv.height / 3), pos=(0.9 * self.scrlv.width, self.scrlv.height / 3))
+        s2 = Slider(min=0, max=1, value=0.5, orientation='horizontal', step=0.01, size_hint=(None, None),
+                    size=(self.scrlv.width / 3, 50), pos=(self.scrlv.width / 3, self.scrlv.height / 40))
+        self.scrlv.bind(scroll_y=partial(self.slider_change, s))
+        self.scrlv.bind(scroll_x=partial(self.slider_change, s2))
+        s.bind(value=partial(self.scroll_change, self.scrlv))
+        s2.bind(value=partial(self.scroll_change2, self.scrlv))
+
+        frame = Image(source=os.path.join('assets', 'images', '27_frame.png'), allow_stretch=True, keep_ratio=False,
+                      size_hint=(None, None), size=(self.width, self.height))
+        self.add_widget(self.scrlv)
+
+        ###########################################################################################################################################################################
+        # USER BUTTONS INIT
+        self.rec_sldr = Decisions_Btn((self.width / 35, self.height / 1.8), "Recruit Soldier", None, self,
+                                      size_hint=(0.1, 0.1), background_normal=self.titles_source,
+                                      background_down=self.titles_source_d)
+        self.rec_wrkr = Decisions_Btn((self.width / 35, self.height / 2.2), "Recruit Worker", None, self,
+                                      size_hint=(0.1, 0.1), background_normal=self.titles_source,
+                                      background_down=self.titles_source_d)
+
+        self.rec_ship = Decisions_Btn((self.width / 35, self.height / 2.9), "Recruit Warship", None, self,
+                                      size_hint=(0.1, 0.1), background_normal=self.titles_source,
+                                      background_down=self.titles_source_d)
+
+        self.diplomacy_btn = Decisions_Btn((self.width / 35, self.height / 1.5), "Diplomacy", None, self,
+                                           size_hint=(0.1, 0.1), background_normal=self.titles_source,
+                                           background_down=self.titles_source_d)
+
+        quit = Button(size_hint=(0.1, 0.05), pos=(self.width * 0.88, self.height * 0.93),
+                      background_normal=os.path.join('assets', 'images', '14_quit_u.png'),
+                      background_down=os.path.join('assets', 'images', '13_quit_d.png'), on_press=play_sound,
+                      on_release=self.exit)
+        info = Info_Button(self, size_hint=(0.05, 0.05), pos=(self.width * 0.83, self.height * 0.93),
+                           background_normal=self.titles_source, background_down=self.titles_source_d, text='INFO',
+                           font_size=24)
+        self.year_button = Button(background_normal=self.titles_source, background_down=self.titles_source_d,
+                                  text='Year : -250', font_size='30', size_hint=(0.15, 0.05),
+                                  pos=(self.width * 0.65, self.height * 0.93))
+        self.next_year = NextYear_Btn()
+
+        self.add_widget(frame)
+        self.add_widget(self.year_button)
+        self.add_widget(self.next_year)
+        self.add_widget(s)
+        self.add_widget(s2)
+        self.add_widget(info)
+        self.add_widget(self.banner)
+        self.add_widget(quit)
+        self.add_widget(self.rec_sldr)
+        self.add_widget(self.rec_wrkr)
+        self.add_widget(self.rec_ship)
+        self.add_widget(self.diplomacy_btn)
+
+        self.textures = ["MANPOWER", "STABILITY", "TREASURY"]
+        self.labels = GridLayout(rows=1, pos=(self.width / 4, self.height - self.height / 8), size_hint=(0.5, 0.05),
+                                 spacing=10)
+
+        self.add_Unit(self.b.Rome, self.b.Rome.capital)
+        self.add_Worker(self.b.Rome, self.b.Rome.capital)
+        self.add_WarShip(self.b.Rome, self.b.Rome.capital)
+        self.add_Unit(self.b.Carthage, self.b.Carthage.capital)
+        self.add_Worker(self.b.Carthage, self.b.Carthage.capital)
+        self.add_WarShip(self.b.Carthage, self.b.Carthage.capital)
+        self.add_Unit(self.b.Egypt, self.b.Egypt.capital)
+        self.add_Worker(self.b.Egypt, self.b.Egypt.capital)
+        self.add_WarShip(self.b.Egypt, self.b.Egypt.capital)
+
+    def scroll_change(self, scrlv, instance, value):
+        scrlv.scroll_y = value
+
+    def scroll_change2(self, scrlv, instance, value):
+        scrlv.scroll_x = value
+
+    def slider_change(self, s, instance, value):
+        if value >= 0:  # this to avoid 'maximum recursion depth exceeded' error
+            s.value = value
+
+    def init_game(self):
+        self.turn = 0
+        self.prev_turn = 0
+        self.year = -250
+        self.sw_seconds = 0
+        if not self.game_started:
+            self.start_time = time.time()
+            self.game_started = True
+
+        volume = NumericProperty(1.0)
+        playlist = [os.path.join('assets', 'audio', 'sountrack1.mp3'),
+                    os.path.join('assets', 'audio', 'sountrack2.mp3'),
+                    os.path.join('assets', 'audio', 'sountrack3.mp3')]
+        for song in playlist:
+            sound = SoundLoader.load(song)
+            sound.volume = 0.1
+            sound.play()
+
+        self.empire.update_stability()
+        self.update_labels(self.empire)
+        self.dip1 = {"relations": 0, "non aggression": False, "trade agreement": False, "military access": False,
+                     "peace": True, "war": False}  # relations player and e1
+        self.dip2 = {"relations": 0, "non aggression": False, "trade agreement": False, "military access": False,
+                     "peace": True, "war": False}  # relations e1 and e2
+        self.dip3 = {"relations": 0, "non aggression": False, "trade agreement": False, "military access": False,
+                     "peace": True, "war": False}  # relations player and e2
+        self.player_play()
+
+    def copy_empire(self, empire):
+        temp = Empire(0, 0, (0, 0), empire.name, self)
+        temp.__dict__ = empire.__dict__.copy()
+        temp.units = self.recreate_unit_list(empire)
+        temp.farm_locs = copy.deepcopy(empire.farm_locs)
+        temp.tile_arr = copy.deepcopy(empire.tile_arr)
+        return empire
+
+    def player_play(self):
+        if self.empire.state != 'Defeat':
+            self.checkWin()
+            self.max_score = self.empire.army * 3 + self.empire.workers * 3 + self.empire.ships * 3
+            self.score = 0
+            print(self.max_score, self.score)
+
+            if self.turn != self.prev_turn:
+                for child in self.b.children:
+                    if (type(child) == Empire_Unit or type(child) == Empire_Worker or type(
+                            child) == Empire_Warship) and child.name == self.player_empire:
+                        child.score = 0
+                    self.prev_turn = self.turn
+        else:
+            self.update_year()
+            return self.empire1_play()
+
+    def recreate_unit_list(self, empire):
+        units_arr = []
+        for unit in empire.units:
+            x = unit.__dict__.copy()
+            if type(unit) == Empire_Unit:
+                s = Empire_Unit((0, 0), (0, 0), None, None, "")
+                s.__dict__ = x
+                units_arr.append(s)
+
+            if type(unit) == Empire_Worker:
+                s = Empire_Worker((0, 0), (0, 0), None, None, "")
+                s.__dict__ = x
+                units_arr.append(s)
+
+            if type(unit) == Empire_Warship:
+                s = Empire_Warship((0, 0), (0, 0), None, None, "")
+                s.__dict__ = x
+                units_arr.append(s)
+
+        return units_arr
+
+    def empire1_play(self):
+        if self.e1.state != 'Defeat':
+            self.e1.update_treasury()
+            self.e1.update_manpower()
+            self.e1.update_stability()
+            board = None
+            unit_loc = None
+            prop1 = Empire(0, 0, (0, 0), "", self)
+            prop2 = Empire(0, 0, (0, 0), "", self)
+            prop3 = Empire(0, 0, (0, 0), "", self)
+            prop1.__dict__ = self.e1.__dict__.copy()
+            prop2.__dict__ = self.empire.__dict__.copy()
+            prop3.__dict__ = self.e2.__dict__.copy()
+            prop1.units = self.recreate_unit_list(self.e1)
+            prop2.units = self.recreate_unit_list(self.empire)
+            prop3.units = self.recreate_unit_list(self.e2)
+            prop1.farm_locs = copy.deepcopy(self.e1.farm_locs)
+            prop2.farm_locs = copy.deepcopy(self.empire.farm_locs)
+            prop3.farm_locs = copy.deepcopy(self.e2.farm_locs)
+            prop1.tile_arr = copy.deepcopy(self.e1.tile_arr)
+            prop2.tile_arr = copy.deepcopy(self.empire.tile_arr)
+            prop3.tile_arr = copy.deepcopy(self.e2.tile_arr)
+
+            if self.e1.name == 'Rome' and self.empire.name == 'Carthage':
+                board = buildMap(prop1, prop2, prop3)
+                unit_loc = units_Map(prop1, prop2, prop3)
+
+            elif self.e1.name == 'Carthage' and self.empire.name == 'Rome':
+                board = buildMap(prop2, prop1, prop3)
+                unit_loc = units_Map(prop2, prop1, prop3)
+            else:
+                board = buildMap(prop1, prop3, prop2)
+                unit_loc = units_Map(prop1, prop3, prop2)
+
+            start = timeit.default_timer()
+            self.minimaxed = prop1
+            empire_decision = self.minimax(board, locations, unit_loc, prop1, prop2, prop3, 0, prop1, MIN, MAX, None)
+            print(empire_decision[1])
+            stop = timeit.default_timer()
+            print('Time: ', stop - start)
+
+            for unit in self.e1.units:
+                unit.score = 0
+            if self.e1.name == 'Rome' and self.empire.name == 'Carthage':
+                board = buildMap(self.e1, self.empire, self.e2)
+                unit_loc = units_Map(self.e1, self.empire, self.e2)
+
+            elif self.e1.name == 'Carthage' and self.empire.name == 'Rome':
+                board = buildMap(self.empire, self.e1, self.e2)
+                unit_loc = units_Map(self.empire, self.e1, self.e2)
+            else:
+                board = buildMap(self.e1, self.e3, self.empire)
+                unit_loc = units_Map(self.e1, self.e3, self.empire)
+
+            self.diplomacy(self.e1)
+
+            for unit in self.e1.units:
+                print(unit.loc)
+            self.unpack(empire_decision[1], board, locations, unit_loc, self.e1, self.empire, self.e2, True)
+            for unit in self.e1.units:
+                print(unit.loc)
+
+        return self.empire2_play()
+
+    def empire2_play(self):
+        if self.e2.state != 'Defeat':
+            self.e2.update_treasury()
+            self.e2.update_manpower()
+            self.e2.update_stability()
+            prop1 = Empire(0, 0, (0, 0), "", self)
+            prop2 = Empire(0, 0, (0, 0), "", self)
+            prop3 = Empire(0, 0, (0, 0), "", self)
+            prop1.__dict__ = self.e2.__dict__.copy()
+            prop2.__dict__ = self.empire.__dict__.copy()
+            prop3.__dict__ = self.e1.__dict__.copy()
+            prop1.units = self.recreate_unit_list(self.e2)
+            prop2.units = self.recreate_unit_list(self.empire)
+            prop3.units = self.recreate_unit_list(self.e1)
+            prop1.farm_locs = copy.deepcopy(self.e2.farm_locs)
+            prop2.farm_locs = copy.deepcopy(self.empire.farm_locs)
+            prop3.farm_locs = copy.deepcopy(self.e1.farm_locs)
+            prop1.tile_arr = copy.deepcopy(self.e2.tile_arr)
+            prop2.tile_arr = copy.deepcopy(self.empire.tile_arr)
+            prop3.tile_arr = copy.deepcopy(self.e1.tile_arr)
+
+            if self.e2.name == 'Egypt' and self.empire.name == 'Rome':
+                board = buildMap(prop2, prop3, prop1)
+                unit_loc = units_Map(prop2, prop3, prop1)
+
+            elif self.e2.name == 'Egypt' and self.empire.name == 'Carthage':
+                board = buildMap(prop3, prop2, prop1)
+                unit_loc = units_Map(prop3, prop2, prop1)
+            else:
+                board = buildMap(prop3, prop1, prop2)
+                unit_loc = units_Map(prop3, prop1, prop2)
+
+            start = timeit.default_timer()
+            self.minimaxed = prop1
+            empire_decision = self.minimax(board, locations, unit_loc, prop1, prop2, prop3, 0, prop1, MIN, MAX, None)
+            print(empire_decision[1])
+            stop = timeit.default_timer()
+            print('Time: ', stop - start)
+
+            for unit in self.e2.units:
+                unit.score = 0
+
+            if self.e2.name == 'Egypt' and self.empire.name == 'Rome':
+                board = buildMap(self.empire, self.e1, self.e2)
+                unit_loc = units_Map(self.empire, self.e1, self.e2)
+
+            elif self.e2.name == 'Egypt' and self.empire.name == 'Carthage':
+                board = buildMap(self.e1, self.empire, self.e2)
+                unit_loc = units_Map(self.e1, self.empire, self.e2)
+            else:
+                board = buildMap(self.e1, self.e2, self.empire)
+                unit_loc = units_Map(self.e1, self.e2, self.empire)
+
+            self.diplomacy(self.e2)
+
+            for unit in self.e2.units:
+                print(unit.loc)
+            self.unpack(empire_decision[1], board, locations, unit_loc, self.e2, self.empire, self.e1, True)
+            for unit in self.e2.units:
+                print(unit.loc)
+
+        return self.player_play()
+
+    def evaluate(self, board, empire, empire2, empire3):
+        score = 0
+        score += len(empire.units) * 10 - len(empire2.units) * 5 - len(empire3.units) * 5
+        score += empire.tiles * 2 - empire2.tiles - empire3.tiles
+        if empire.stability < 0:
+            score -= 50
+
+        for unit in empire.units:
+            for i in range(unit.loc[0] - 1, unit.loc[0] + 2):
+                for j in range(unit.loc[1] - 1, unit.loc[1] + 2):
+                    if i >= 0 and i < 48 and j >= 0 and j < 70:
+                        if empire.state == 'War':
+                            if empire2.state == 'War':
+                                if (type(unit) == Empire_Unit or type(unit) == Empire_Warship) and empire2.tile_arr[i][
+                                    j] == 'O':
+                                    score += 10
+                                else:
+                                    score -= 10
+                            if empire3.state == 'War':
+                                if (type(unit) == Empire_Unit or type(unit) == Empire_Warship) and empire3.tile_arr[i][
+                                    j] == 'O':
+                                    score += 10
+                                else:
+                                    score -= 10
+                        else:
+                            if type(unit) == Empire_Unit:
+                                if (board[i][j] == 'g' or board[i][j] == 'd') and empire2.tile_arr[i][j] != 'O' and \
+                                        empire3.tile_arr[i][j] != 'O':
+                                    if i == unit.loc[0] and j == unit.loc[1]:
+                                        score += 10
+                                    else:
+                                        score += 1
+
+
+                            elif type(unit) == Empire_Worker:
+                                if empire.tile_arr[i][j] == 'O':
+                                    if i == unit.loc[0] and j == unit.loc[1]:
+                                        score += 10
+                                    else:
+                                        score += 1
+
+        for unit in empire2.units:
+            for i in range(unit.loc[0] - 1, unit.loc[0] + 2):
+                for j in range(unit.loc[1] - 1, unit.loc[1] + 2):
+                    if i >= 0 and i < 48 and j >= 0 and j < 70:
+                        if empire2.state == 'War':
+                            if empire.state == 'War':
+                                if (type(unit) == Empire_Unit or type(unit) == Empire_Warship) and empire.tile_arr[i][
+                                    j] == 'O':
+                                    score -= 10
+                                else:
+                                    score += 10
+                            if empire3.state == 'War':
+                                if (type(unit) == Empire_Unit or type(unit) == Empire_Warship) and empire3.tile_arr[i][
+                                    j] == 'O':
+                                    score -= 10
+                                else:
+                                    score += 10
+                        else:
+                            if type(unit) == Empire_Unit:
+                                if (board[i][j] == 'g' or board[i][j] == 'd') and empire.tile_arr[i][j] != 'O' and \
+                                        empire3.tile_arr[i][j] != 'O':
+                                    if i == unit.loc[0] and j == unit.loc[1]:
+                                        score -= 10
+                                    else:
+                                        score -= 1
+                                else:
+                                    score += 1
+
+                            elif type(unit) == Empire_Worker:
+                                if empire2.tile_arr[i][j] == 'O':
+                                    if i == unit.loc[0] and j == unit.loc[1]:
+                                        score -= 10
+                                    else:
+                                        score -= 1
+                                else:
+                                    score += 1
+
+        for unit in empire3.units:
+            for i in range(unit.loc[0] - 1, unit.loc[0] + 2):
+                for j in range(unit.loc[1] - 1, unit.loc[1] + 2):
+                    if i >= 0 and i < 48 and j >= 0 and j < 70:
+                        if empire3.state == 'War':
+                            if empire2.state == 'War':
+                                if (type(unit) == Empire_Unit or type(unit) == Empire_Warship) and empire2.tile_arr[i][
+                                    j] == 'O':
+                                    score -= 10
+                                else:
+                                    score += 10
+                            if empire.state == 'War':
+                                if (type(unit) == Empire_Unit or type(unit) == Empire_Warship) and empire.tile_arr[i][
+                                    j] == 'O':
+                                    score -= 10
+                                else:
+                                    score += 10
+                        else:
+                            if type(unit) == Empire_Unit:
+                                if (board[i][j] == 'g' or board[i][j] == 'd') and empire2.tile_arr[i][j] != 'O' and \
+                                        empire.tile_arr[i][j] != 'O':
+                                    if i == unit.loc[0] and j == unit.loc[1]:
+                                        score -= 10
+                                    else:
+                                        score -= 1
+                                else:
+                                    score += 1
+
+                            elif type(unit) == Empire_Worker:
+                                if empire3.tile_arr[i][j] == 'O':
+                                    if i == unit.loc[0] and j == unit.loc[1]:
+                                        score -= 10
+                                    else:
+                                        score -= 1
+                                else:
+                                    score += 1
+
+        if empire.name != self.minimaxed.name:
+            score = score * (-1)
+
+        return score
+
+    def capture(self, board, topo_map, unit_locs, empire, empire2, empire3, stance, version):
+        for unit in empire.units:
+            if type(unit) == Empire_Unit and unit.name == empire.name:
+                while unit.score < 3:
+                    if empire.state == 'Peace':
+                        if board[unit.loc[0]][unit.loc[1]] != empire.name[0] and board[unit.loc[0]][unit.loc[1]] != \
+                                empire2.name[0] and board[unit.loc[0]][unit.loc[1]] != empire3.name[0]:
+                            board[unit.loc[0]][unit.loc[1]] = empire.name[0]
+                            empire.tiles += 1
+                            empire.add_locations(unit.loc[1], unit.loc[0])
+                            board[unit.loc[0]][unit.loc[1]] = empire.name[0]
+                            unit.score += 1
+                            if version:
+                                for hex in self.b.children:
+                                    if type(hex) == Empire_HexTile and hex.loc == unit.loc:
+                                        if empire.name == 'Rome':
+                                            hex.type = "Roman"
+                                            if locations[unit.loc[0]][unit.loc[1]] == 'c':
+                                                hex.source = os.path.join('assets', 'images', '35_rome_hex_city.png')
+                                            else:
+                                                hex.source = os.path.join('assets', 'images', '35_rome_hex.png')
+
+                                                hex.type = "Roman"
+
+                                        elif empire.name == 'Carthage':
+                                            hex.type = "Carthaginian"
+                                            if locations[unit.loc[0]][unit.loc[1]] == 'c':
+                                                hex.source = os.path.join('assets', 'images',
+                                                                          '36_carthage_hex_city.png')
+                                            else:
+                                                hex.source = os.path.join('assets', 'images', '36_carthage_hex.png')
+
+                                            hex.type = "Carthaginian"
+
+                                        elif empire.name == 'Egypt':
+                                            hex.type = "Egyptian"
+                                            if locations[unit.loc[0]][unit.loc[1]] == 'c':
+                                                hex.source = os.path.join('assets', 'images', '37_egypt_hex_city.png')
+                                            else:
+                                                hex.source = os.path.join('assets', 'images', '37_egypt_hex.png')
+
+                                            hex.type = "Egyptian"
+                                        break
+                        else:
+                            min_dis = float("inf")
+                            curr_loc = unit.loc
+                            for i in range(unit.loc[0] - 10, unit.loc[0] + 10):
+                                for j in range(unit.loc[1] - 10, unit.loc[1] + 10):
+                                    if 48 > i >= 0 <= j < 70 and unit.loc != (i, j) and board[i][j] != empire.name[
+                                        0] and unit_locs[i][j] == 1 and topo_map[i][j] != 'w' and topo_map[i][
+                                        j] != 'm' and empire2.tile_arr[i][j] != 'O' and empire3.tile_arr[i][j] != 'O':
+                                        if ((i, j) in islands and unit.loc in islands) or (
+                                                (i, j) not in islands and unit.loc not in islands):
+                                            dis = math.sqrt(((unit.loc[0] - i) ** 2) + ((unit.loc[1] - j) ** 2))
+                                            if dis < min_dis:
+                                                min_dis = dis
+                                                curr_loc = (i, j)
+
+                            path = astar(board, unit.loc, curr_loc, empire2, empire3, stance)
+                            if path != None and len(path) > 1:
+                                unit_locs[unit.loc[0]][unit.loc[1]] = 1
+                                if version:
+                                    if path[1][1] % 2 == 0:
+                                        unit.pos = (7 + path[1][1] * 45, (path[1][0] + 1) * 50 + 8)
+                                    else:
+                                        unit.pos = (7 + path[1][1] * 45, path[1][0] * 50 + 65 / 2)
+                                    Animation(x=unit.pos[0], y=unit.pos[1]).start(unit)
+                                    for hex in self.b.children:
+                                        if type(hex) == Empire_HexTile and hex.loc == unit.loc and hex.occupied == True:
+                                            hex.occupied = False
+                                        if type(hex) == Empire_HexTile and hex.loc[0] == path[1][0] and hex.loc[1] == \
+                                                path[1][1] and hex.occupied == False:
+                                            hex.occupied = True
+
+                                unit.loc = path[1]
+                                unit_locs[path[1][0]][path[1][1]] = empire.name[0] + 'U'
+                                unit.score += 1
+                            else:
+                                if unit.loc[1] % 2 == 0:
+                                    x = random.randint(unit.loc[0], unit.loc[0] + 2)
+                                    y = random.randint(unit.loc[1] - 1, unit.loc[1] + 2)
+
+                                    while x < 0 or x >= 48 or y < 0 or y >= 70 or (
+                                            board[x][y] == 'w' or board[x][y] == 'm') or board[x][y] == empire2.name[
+                                        0] or board[x][y] == empire3.name[0]:
+                                        x = random.randint(unit.loc[0], unit.loc[0] + 2)
+                                        y = random.randint(unit.loc[1] - 1, unit.loc[1] + 2)
+                                else:
+                                    x = random.randint(unit.loc[0] - 1, unit.loc[0] + 1)
+                                    y = random.randint(unit.loc[1] - 1, unit.loc[1] + 2)
+
+                                    while x < 0 or x >= 48 or y < 0 or y >= 70 or (
+                                            board[x][y] == 'w' or board[x][y] == 'm') or board[x][y] == empire2.name[
+                                        0] or board[x][y] == empire3.name[0]:
+                                        x = random.randint(unit.loc[0] - 1, unit.loc[0] + 1)
+                                        y = random.randint(unit.loc[1] - 1, unit.loc[1] + 2)
+
+                                if version:
+                                    if unit.loc[1] % 2 == 0:
+                                        unit.pos = (7 + y * 45, (x + 1) * 50 + 8)
+                                    else:
+                                        unit.pos = (7 + y * 45, x * 50 + 65 / 2)
+                                    Animation(x=unit.pos[0], y=unit.pos[1]).start(unit)
+                                    for hex in self.b.children:
+                                        if type(hex) == Empire_HexTile and hex.loc == unit.loc and hex.occupied == True:
+                                            hex.occupied = False
+                                        if type(hex) == Empire_HexTile and hex.loc == (x, y) and hex.occupied == False:
+                                            hex.occupied = True
+
+                                unit_locs[unit.loc[0]][unit.loc[1]] = 1
+                                unit.loc = (x, y)
+                                unit_locs[x][y] = empire.name[0] + 'U'
+                                unit.score += 1
+
+                    elif empire.state == 'War':
+                        if stance:
+                            if board[unit.loc[0]][unit.loc[1]] != empire.name[0]:
+                                board[unit.loc[0]][unit.loc[1]] = empire.name[0]
+                                empire.tiles += 1
+                                empire.add_locations(unit.loc[1], unit.loc[0])
+                                board[unit.loc[0]][unit.loc[1]] = empire.name[0]
+                                unit.score += 1
+                                if empire2.state == 'War' and board[unit.loc[0]][unit.loc[1]] == empire2.name[0]:
+                                    empire2.tile_arr[unit.loc[0]][unit.loc[1]] = 1
+                                    empire2.tiles -= 1
+                                if empire3.state == 'War' and board[unit.loc[0]][unit.loc[1]] == empire3.name[0]:
+                                    empire3.tile_arr[unit.loc[0]][unit.loc[1]] = 1
+                                    empire3.tiles -= 1
+
+                                if version:
+                                    for hex in self.b.children:
+                                        if type(hex) == Empire_HexTile and hex.loc == unit.loc:
+                                            if empire.name == 'Rome':
+                                                hex.type = "Roman"
+                                                if locations[unit.loc[0]][unit.loc[1]] == 'c':
+                                                    hex.source = os.path.join('assets', 'images',
+                                                                              '35_rome_hex_city.png')
+                                                else:
+                                                    hex.source = os.path.join('assets', 'images', '35_rome_hex.png')
+
+                                                    hex.type = "Roman"
+
+                                            elif empire.name == 'Carthage':
+                                                hex.type = "Carthaginian"
+                                                if locations[unit.loc[0]][unit.loc[1]] == 'c':
+                                                    hex.source = os.path.join('assets', 'images',
+                                                                              '36_carthage_hex_city.png')
+                                                else:
+                                                    hex.source = os.path.join('assets', 'images', '36_carthage_hex.png')
+
+                                                hex.type = "Carthaginian"
+
+                                            elif empire.name == 'Egypt':
+                                                hex.type = "Egyptian"
+                                                if locations[unit.loc[0]][unit.loc[1]] == 'c':
+                                                    hex.source = os.path.join('assets', 'images',
+                                                                              '37_egypt_hex_city.png')
+                                                else:
+                                                    hex.source = os.path.join('assets', 'images', '37_egypt_hex.png')
+
+                                                hex.type = "Egyptian"
+                                            break
+
+                            else:
+                                min_dis = float("inf")
+                                curr_loc = unit.loc
+                                for i in range(unit.loc[0] - 10, unit.loc[0] + 10):
+                                    for j in range(unit.loc[1] - 10, unit.loc[1] + 10):
+                                        if i >= 0 and i < 48 and j >= 0 and j < 70 and unit.loc != (i, j) and board[i][
+                                            j] != empire.name[0] and unit_locs[i][j] == 1 and topo_map[i][j] != 'w' and \
+                                                topo_map[i][j] != 'm' and empire2.tile_arr[i][j] != 'O' and \
+                                                empire3.tile_arr[i][j] != 'O':
+                                            if ((i, j) in islands and unit.loc in islands) or (
+                                                    (i, j) not in islands and unit.loc not in islands):
+                                                dis = math.sqrt(((unit.loc[0] - i) ** 2) + ((unit.loc[1] - j) ** 2))
+                                                if dis < min_dis:
+                                                    min_dis = dis
+                                                    curr_loc = (i, j)
+
+                                path = astar(board, unit.loc, curr_loc, empire2, empire3, stance)
+                                if path != None and len(path) > 1:
+                                    unit_locs[unit.loc[0]][unit.loc[1]] = 1
+                                    if version:
+                                        if path[1][1] % 2 == 0:
+                                            unit.pos = (7 + path[1][1] * 45, (path[1][0] + 1) * 50 + 8)
+                                        else:
+                                            unit.pos = (7 + path[1][1] * 45, path[1][0] * 50 + 65 / 2)
+                                        Animation(x=unit.pos[0], y=unit.pos[1]).start(unit)
+                                        for hex in self.b.children:
+                                            if type(
+                                                    hex) == Empire_HexTile and hex.loc == unit.loc and hex.occupied == True:
+                                                hex.occupied = False
+                                            if type(hex) == Empire_HexTile and hex.loc[0] == path[1][0] and hex.loc[
+                                                1] == path[1][1] and hex.occupied == False:
+                                                hex.occupied = True
+
+                                    unit.loc = path[1]
+                                    unit_locs[path[1][0]][path[1][1]] = empire.name[0] + 'U'
+                                    unit.score += 1
+                                else:
+                                    if unit.loc[1] % 2 == 0:
+                                        x = random.randint(unit.loc[0], unit.loc[0] + 2)
+                                        y = random.randint(unit.loc[1] - 1, unit.loc[1] + 2)
+
+                                        while x < 0 or x >= 48 or y < 0 or y >= 70 or board[x][y] == 'w' or board[x][
+                                            y] == 'm':
+                                            x = random.randint(unit.loc[0], unit.loc[0] + 2)
+                                            y = random.randint(unit.loc[1] - 1, unit.loc[1] + 2)
+                                    else:
+                                        x = random.randint(unit.loc[0] - 1, unit.loc[0] + 1)
+                                        y = random.randint(unit.loc[1] - 1, unit.loc[1] + 2)
+
+                                        while x < 0 or x >= 48 or y < 0 or y >= 70 or board[x][y] == 'w' or board[x][
+                                            y] == 'm':
+                                            x = random.randint(unit.loc[0] - 1, unit.loc[0] + 1)
+                                            y = random.randint(unit.loc[1] - 1, unit.loc[1] + 2)
+
+                                    if version:
+                                        if unit.loc[1] % 2 == 0:
+                                            unit.pos = (7 + y * 45, (x + 1) * 50 + 8)
+                                        else:
+                                            unit.pos = (7 + y * 45, x * 50 + 65 / 2)
+                                        Animation(x=unit.pos[0], y=unit.pos[1]).start(unit)
+                                        for hex in self.b.children:
+                                            if type(
+                                                    hex) == Empire_HexTile and hex.loc == unit.loc and hex.occupied == True:
+                                                hex.occupied = False
+                                            if type(hex) == Empire_HexTile and hex.loc == (
+                                                    x, y) and hex.occupied == False:
+                                                hex.occupied = True
+
+                                    unit_locs[unit.loc[0]][unit.loc[1]] = 1
+                                    unit.loc = (x, y)
+                                    unit_locs[x][y] = empire.name[0] + 'U'
+                                    unit.score += 1
+
+    def reinforce(self, board, topo_map, empire, unit_locs, empire2, empire3, version):
+        priority_locs = []
+        for x in range(48):
+            for y in range(70):
+                if board[x][y] != empire.name[0] and (topo_map[x][y] == 'g' or topo_map[x][y] == 'd'):
+                    if y % 2 == 0:
+                        for new_position in [(0, -1), (0, 1), (-1, 0), (1, 0), (1, -1), (1, 1)]:
+                            tile = (x + new_position[0], y + new_position[1])
+                            if tile[0] >= 0 and tile[0] < 48 and tile[1] >= 0 and tile[1] < 70 and board[tile[0]][
+                                tile[1]] == empire.name[0] and unit_locs[tile[0]][tile[1]] == 1:
+                                priority_locs.append(tile)
+                                break
+                    else:
+                        for new_position in [(0, -1), (0, 1), (-1, 0), (1, 0), (-1, -1), (-1, 1)]:
+                            tile = (x + new_position[0], y + new_position[1])
+                            if tile[0] >= 0 and tile[0] < 48 and tile[1] >= 0 and tile[1] < 70 and board[tile[0]][
+                                tile[1]] == empire.name[0] and unit_locs[tile[0]][tile[1]] == 1:
+                                priority_locs.append(tile)
+                                break
+
+        priority_locs = list(dict.fromkeys(priority_locs))
+        for unit in empire.units:
+            if type(unit) == Empire_Unit and unit.name == empire.name:
+                min_dis = float("inf")
+                curr_loc = unit.loc
+                for loc in priority_locs:
+                    if (loc in islands and unit.loc in islands) or (loc not in islands and unit.loc not in islands):
+                        dis = math.sqrt(((unit.loc[0] - loc[0]) ** 2) + ((unit.loc[1] - loc[1]) ** 2))
+                        if dis < min_dis:
+                            min_dis = dis
+                            curr_loc = loc
+
+                if len(priority_locs) > 0 and curr_loc in priority_locs:
+                    priority_locs.remove(curr_loc)
+
+                path = astar(board, unit.loc, curr_loc, empire2, empire3, None)
+                if path != None and len(path) > 1:
+                    unit_locs[unit.loc[0]][unit.loc[1]] = 1
+                    if version:
+                        if path[1][1] % 2 == 0:
+                            unit.pos = (7 + path[1][1] * 45, (path[1][0] + 1) * 50 + 8)
+                        else:
+                            unit.pos = (7 + path[1][1] * 45, path[1][0] * 50 + 65 / 2)
+                        Animation(x=unit.pos[0], y=unit.pos[1]).start(unit)
+                        for hex in self.b.children:
+                            if type(hex) == Empire_HexTile and hex.loc == unit.loc and hex.occupied == True:
+                                hex.occupied = False
+                            if type(hex) == Empire_HexTile and hex.loc == path[1] and hex.occupied == False:
+                                hex.occupied = True
+
+                    unit.loc = path[1]
+                    unit_locs[path[1][0]][path[1][1]] = empire.name[0] + 'U'
+                unit.score += 3
+
+    def add_manpower(self, empire, name):
+        for unit in empire.units:
+            if name == 'soldier' and type(unit) == Empire_Unit:
+                if empire.manpower >= 500:
+                    unit.power += 500
+                    empire.manpower -= 500
+                elif empire.manpower <= 500 and empire.state == 'War':
+                    unit.power += empire.manpower
+                    empire.manpower = 0
+
+            elif name == 'warship' and type(unit) == Empire_Warship:
+                if empire.manpower >= 500:
+                    unit.power += 500
+                    empire.manpower -= 500
+                elif empire.manpower <= 500 and empire.state == 'War':
+                    unit.power += empire.manpower
+                    empire.manpower = 0
+
+    def worker_action(self, board, topo_map, unit_locs, empire, empire2, empire3, enemy_empire, stance, version):
+        for unit in empire.units:
+            if type(unit) == Empire_Worker and unit.name == empire.name:
+                while unit.score < 3:
+                    if stance == None or stance:
+                        if board[unit.loc[0]][unit.loc[1]] == empire.name[0] and empire.farm_locs[unit.loc[0]][
+                            unit.loc[1]] != 'O' and topo_map[unit.loc[0]][unit.loc[1]] != 'c':
+                            empire.farm_locs[unit.loc[0]][unit.loc[1]] = 'O'
+                            empire.farms += 1
+                            unit.score += 1
+                            if version:
+                                for hex in self.b.children:
+                                    if type(hex) == Empire_HexTile and unit.loc == hex.loc:
+                                        hex.source = os.path.join('assets', 'images', 'grass_hex.png')
+                                        break
+
+                        else:  # search for closest open tile
+                            min_dis = float("inf")
+                            curr_loc = unit.loc
+
+                            for i in range(unit.loc[0] - 5, unit.loc[0] + 5):
+                                for j in range(unit.loc[1] - 5, unit.loc[1] + 5):
+                                    if i >= 0 and i <= 48 and j >= 0 and j < 70:
+                                        if unit.loc != (i, j) and board[i][j] == empire.name[0] and empire.farm_locs[i][
+                                            j] != 'O' and topo_map[i][j] != 'w' and topo_map[i][j] != 'm' and \
+                                                unit_locs[i][j] == 1:
+                                            if ((i, j) in islands and unit.loc in islands) or (
+                                                    (i, j) not in islands and unit.loc not in islands):
+                                                dis = math.sqrt(((unit.loc[0] - i) ** 2) + ((unit.loc[1] - j) ** 2))
+                                                if dis < min_dis:
+                                                    min_dis = dis
+                                                    curr_loc = (i, j)
+
+                            path = astar(board, unit.loc, curr_loc, empire2, empire3, stance)
+                            if path != None and len(path) > 1:
+                                unit_locs[unit.loc[0]][unit.loc[1]] = 1
+                                if version:
+                                    if path[1][1] % 2 == 0:
+                                        unit.pos = (7 + path[1][1] * 45, (path[1][0] + 1) * 50 + 8)
+                                    else:
+                                        unit.pos = (7 + path[1][1] * 45, path[1][0] * 50 + 65 / 2)
+                                    Animation(x=unit.pos[0], y=unit.pos[1]).start(unit)
+                                    for hex in self.b.children:
+                                        if type(hex) == Empire_HexTile and hex.loc == unit.loc and hex.occupied == True:
+                                            hex.occupied = False
+                                        if type(hex) == Empire_HexTile and hex.loc[0] == path[1][0] and hex.loc[1] == \
+                                                path[1][1] and hex.occupied == False:
+                                            hex.occupied = True
+                                unit.loc = path[1]
+                                unit_locs[path[1][0]][path[1][1]] = empire.name[0] + 'W'
+                                unit.score += 1
+                            else:
+                                if unit.loc[1] % 2 == 0:
+                                    x = random.randint(unit.loc[0], unit.loc[0] + 2)
+                                    y = random.randint(unit.loc[1] - 1, unit.loc[1] + 2)
+
+                                    while x < 0 or x >= 48 or y < 0 or y >= 70 or (
+                                            board[x][y] == 'w' or board[x][y] == 'm') or board[x][y] == empire2.name[
+                                        0] or board[x][y] == empire3.name[0]:
+                                        x = random.randint(unit.loc[0], unit.loc[0] + 2)
+                                        y = random.randint(unit.loc[1] - 1, unit.loc[1] + 2)
+                                else:
+                                    x = random.randint(unit.loc[0] - 1, unit.loc[0] + 1)
+                                    y = random.randint(unit.loc[1] - 1, unit.loc[1] + 2)
+
+                                    while x < 0 or x >= 48 or y < 0 or y >= 70 or (
+                                            board[x][y] == 'w' or board[x][y] == 'm') or board[x][y] == empire2.name[
+                                        0] or board[x][y] == empire3.name[0]:
+                                        x = random.randint(unit.loc[0] - 1, unit.loc[0] + 1)
+                                        y = random.randint(unit.loc[1] - 1, unit.loc[1] + 2)
+
+                                if version:
+                                    if unit.loc[1] % 2 == 0:
+                                        unit.pos = (7 + y * 45, (x + 1) * 50 + 8)
+                                    else:
+                                        unit.pos = (7 + y * 45, x * 50 + 65 / 2)
+                                    Animation(x=unit.pos[0], y=unit.pos[1]).start(unit)
+                                    for hex in self.b.children:
+                                        if type(hex) == Empire_HexTile and hex.loc == unit.loc and hex.occupied == True:
+                                            hex.occupied = False
+                                        if type(hex) == Empire_HexTile and hex.loc == (x, y) and hex.occupied == False:
+                                            hex.occupied = True
+
+                                unit_locs[unit.loc[0]][unit.loc[1]] = 1
+                                unit.loc = (x, y)
+                                unit_locs[x][y] = empire.name[0] + 'U'
+                                unit.score += 1
+
+                    elif stance == False:
+                        enemy_close = False
+                        enemy_loc = (0, 0)
+                        for i in range(unit.loc[0] - 1, unit.loc[0] + 2):
+                            for j in range(unit.loc[1] - 1, unit.loc[1] + 2):
+                                if i >= 0 and j >= 0:
+                                    if enemy_empire.name == 'Rome':
+                                        if unit_locs[i][j] == 'RS' or unit_locs[i][j] == 'RU' or unit_locs[i][
+                                            j] == 'RW':
+                                            enemy_close = True
+                                            enemy_loc = (i, j)
+                                            break
+
+                                    elif enemy_empire.name == 'Carthage':
+                                        if unit_locs[i][j] == 'CS' or unit_locs[i][j] == 'CU' or unit_locs[i][
+                                            j] == 'CW':
+                                            enemy_close = True
+                                            enemy_loc = (i, j)
+                                            break
+
+                                    elif enemy_empire.name == 'Egypt':
+                                        if unit_locs[i][j] == 'ES' or unit_locs[i][j] == 'EU' or unit_locs[i][
+                                            j] == 'EW':
+                                            enemy_close = True
+                                            enemy_loc = (i, j)
+                                            break
+
+                        if enemy_close:
+                            max_dis = -float("inf")
+                            curr_loc = unit.loc
+                            if unit.loc[1] % 2 == 0:
+                                for x in range(unit.loc[0], unit.loc[0] + 2):
+                                    for y in range(unit.loc[1] - 1, unit.loc[1] + 2):
+                                        dis = math.sqrt(((enemy_loc[0] - x) ** 2) + ((enemy_loc[1] - y) ** 2))
+                                        if dis > max_dis and topo_map[x][y] != 'w' and topo_map[x][y] != 'm':
+                                            max_dis = dis
+                                            curr_loc = (x, y)
+
+                                dis = math.sqrt(
+                                    ((enemy_loc[0] - unit.loc[0] - 1) ** 2) + ((enemy_loc[1] - unit.loc[1]) ** 2))
+                                if dis > max_dis and topo_map[unit.loc[0] - 1][unit.loc[1]] != 'w' and \
+                                        topo_map[unit.loc[0] - 1][unit.loc[1]] != 'm':
+                                    max_dis = dis
+                                    curr_loc = (unit.loc[0] - 1, unit.loc[1])
+
+                            else:
+                                for x in range(unit.loc[0] - 1, unit.loc[0] + 1):
+                                    for y in range(unit.loc[1] - 1, unit.loc[1] + 2):
+                                        dis = math.sqrt(((enemy_loc[0] - x) ** 2) + ((enemy_loc[1] - y) ** 2))
+                                        if dis > max_dis and topo_map[x][y] != 'w' and topo_map[x][y] != 'm':
+                                            max_dis = dis
+                                            curr_loc = (x, y)
+
+                                dis = math.sqrt(
+                                    ((enemy_loc[0] - unit.loc[0] + 1) ** 2) + ((enemy_loc[1] - unit.loc[1]) ** 2))
+                                if dis > max_dis and topo_map[unit.loc[0] + 1][unit.loc[1]] != 'w' and \
+                                        topo_map[unit.loc[0] + 1][unit.loc[1]] != 'm':
+                                    max_dis = dis
+                                    curr_loc = (unit.loc[0] + 1, unit.loc[1])
+
+                            if curr_loc != unit.loc:
+                                unit_locs[unit.loc[0]][unit.loc[1]] = 1
+                                if version:
+                                    if curr_loc[1] % 2 == 0:
+                                        unit.pos = (7 + curr_loc[1] * 45, (curr_loc[0] + 1) * 50 + 8)
+                                    else:
+                                        unit.pos = (7 + curr_loc[1] * 45, curr_loc[0] * 50 + 65 / 2)
+                                    Animation(x=unit.pos[0], y=unit.pos[1]).start(unit)
+                                    for hex in self.b.children:
+                                        if type(hex) == Empire_HexTile and hex.loc == unit.loc and hex.occupied == True:
+                                            hex.occupied = False
+                                        if type(hex) == Empire_HexTile and hex.loc[0] == curr_loc[0] and hex.loc[1] == \
+                                                curr_loc[1] and hex.occupied == False:
+                                            hex.occupied = True
+
+                                unit.loc = curr_loc
+                                unit_locs[unit.loc[0]][unit.loc[1]] = empire.name[0] + 'W'
+                                unit.score += 1
+
+                        elif board[unit.loc[0]][unit.loc[1]] == empire.name[0] and empire.farm_locs[unit.loc[0]][
+                            unit.loc[1]] != 'O' and topo_map[unit.loc[0]][unit.loc[1]] != 'c':
+                            empire.farm_locs[unit.loc[0]][unit.loc[1]] = 'O'
+                            empire.farms += 1
+                            unit.score += 1
+                            if version:
+                                for hex in self.b.children:
+                                    if type(hex) == Empire_HexTile and unit.loc == hex.loc:
+                                        hex.source = os.path.join('assets', 'images', 'grass_hex.png')
+                                        break
+
+    def patrol(self, board, unit_locs, empire, version):
+        for unit in empire.units:
+            if type(unit) == Empire_Warship and unit.name == empire.name:
+                while unit.score < 3:
+                    legal_moves = []
+                    if unit.loc[1] % 2 == 0:
+                        for i in range(unit.loc[0], unit.loc[0] + 2):
+                            for j in range(unit.loc[1] - 1, unit.loc[1] + 2):
+                                if (unit.loc != (i, j)) and (
+                                        board[i][j] == 'w' or board[i][j] == 'p') and self.shore_is_close(i, j, board):
+                                    legal_moves.append((i, j))
+
+                        if (board[unit.loc[0] - 1][unit.loc[1]] == 'w' or board[unit.loc[0] - 1][
+                            unit.loc[1]] == 'p') and self.shore_is_close(unit.loc[0] - 1, unit.loc[1], board):
+                            legal_moves.append((unit.loc[0] - 1, unit.loc[1]))
+
+                    else:
+                        for i in range(unit.loc[0] - 1, unit.loc[0] + 1):
+                            for j in range(unit.loc[1] - 1, unit.loc[1] + 2):
+                                if (unit.loc != (i, j)) and (
+                                        board[i][j] == 'w' or board[i][j] == 'p') and self.shore_is_close(i, j, board):
+                                    legal_moves.append((i, j))
+
+                        if (board[unit.loc[0] + 1][unit.loc[1]] == 'w' or board[unit.loc[0] + 1][
+                            unit.loc[1]] == 'p') and self.shore_is_close(unit.loc[0] + 1, unit.loc[1], board):
+                            legal_moves.append((unit.loc[0] + 1, unit.loc[1]))
+
+                    if len(legal_moves) == 0 and empire.name == self.empire.name:
+                        if unit.loc[1] % 2 == 0:
+                            x = random.randint(unit.loc[0], unit.loc[0] + 2)
+                            y = random.randint(unit.loc[1] - 1, unit.loc[1] + 2)
+
+                            while x < 0 or x >= 48 or y < 0 or y >= 70 or board[x][y] != 'w' or board[x][y] != 'p':
+                                x = random.randint(unit.loc[0], unit.loc[0] + 2)
+                                y = random.randint(unit.loc[1] - 1, unit.loc[1] + 2)
+                        else:
+                            x = random.randint(unit.loc[0] - 1, unit.loc[0] + 1)
+                            y = random.randint(unit.loc[1] - 1, unit.loc[1] + 2)
+
+                            while x < 0 or x >= 48 or y < 0 or y >= 70 or board[x][y] != 'w' or board[x][y] != 'p':
+                                x = random.randint(unit.loc[0] - 1, unit.loc[0] + 1)
+                                y = random.randint(unit.loc[1] - 1, unit.loc[1] + 2)
+
+                        unit_locs[unit.loc[0]][unit.loc[1]] = 1
+                        unit.loc = (x, y)
+                        unit_locs[x][y] = empire.name[0] + 'S'
+                        unit.score += 1
+
+                    else:
+                        rnd_move = random.randint(0, len(legal_moves))
+                        rnd_move = rnd_move - 1
+                        unit_locs[unit.loc[0]][unit.loc[1]] = 1
+                        if version:
+                            if legal_moves[rnd_move][1] % 2 == 0:
+                                unit.pos = (7 + legal_moves[rnd_move][1] * 45, (legal_moves[rnd_move][0] + 1) * 50 + 8)
+                            else:
+                                unit.pos = (7 + legal_moves[rnd_move][1] * 45, legal_moves[rnd_move][0] * 50 + 65 / 2)
+
+                            Animation(x=unit.pos[0], y=unit.pos[1]).start(unit)
+                            for hex in self.b.children:
+                                if type(hex) == Empire_HexTile and hex.loc == unit.loc and hex.occupied == True:
+                                    hex.occupied = False
+                                if type(hex) == Empire_HexTile and hex.loc == legal_moves[
+                                    rnd_move] and hex.occupied == False:
+                                    hex.occupied = True
+
+                        unit.loc = legal_moves[rnd_move]
+                        unit_locs[unit.loc[0]][unit.loc[1]] = empire.name[0] + 'S'
+                        unit.score += 1
+
+    def shore_is_close(self, a, b, board):
+        if b % 2 == 0:
+            for x in range(a, a + 2):
+                for y in range(b - 1, b + 2):
+                    if board[x][y] != 'w':
+                        return True
+
+            if board[a - 1][b] != 'w':
+                return True
+
+        else:
+            for x in range(a - 1, a + 1):
+                for y in range(b - 1, b + 2):
+                    if board[x][y] != 'w':
+                        return True
+
+            if board[a + 1][b] != 'w':
+                return True
+
+        return False
+
+    def colonize(self, board, topo_map, unit_locs, empire, empire2, empire3, version):
+        for unit in empire.units:
+            if type(unit) == Empire_Warship and unit.name == empire.name:
+                if unit.loc[1] % 2 == 0:
+                    for i in range(unit.loc[0], unit.loc[0] + 2):
+                        for j in range(unit.loc[1] - 1, unit.loc[1] + 2):
+                            if (topo_map[i][j] != 'w' and board[i][j] != 'p') or board[i][j] == empire.name[0]:
+                                if version:
+                                    self.add_Unit(empire, (i, j))
+                                    empire.army += 1
+                                else:
+                                    self.add_soldier(unit_locs, empire, empire2, empire3)
+                                    empire.army += 1
+
+                                if version:
+                                    self.add_Worker(empire, (i, j))
+                                    empire.workers += 1
+                                else:
+                                    self.add_worker(unit_locs, empire, empire2, empire3)
+                                    empire.workers += 1
+                                unit.score += 1
+                                break
+
+                    if (topo_map[unit.loc[0] - 1][unit.loc[1]] != 'w' and topo_map[unit.loc[0] - 1][
+                        unit.loc[1]] != 'p') or board[unit.loc[0] - 1][unit.loc[1]] == empire.name[0]:
+                        if version:
+                            self.add_Unit(empire, (unit.loc[0] - 1, unit.loc[1]))
+                            empire.army += 1
+                        else:
+                            self.add_soldier(unit_locs, empire, empire2, empire3)
+                            empire.army += 1
+                        if version:
+                            self.add_Worker(empire, (unit.loc[0] - 1, unit.loc[1]))
+                            empire.workers += 1
+                        else:
+                            self.add_worker(unit_locs, empire, empire2, empire3)
+                            empire.workers += 1
+                        unit.score += 1
+                        break
+
+                else:
+                    for i in range(unit.loc[0] - 1, unit.loc[0] + 1):
+                        for j in range(unit.loc[1] - 1, unit.loc[1] + 2):
+                            if (topo_map[i][j] != 'w' and board[i][j] != 'p') or board[i][j] == empire.name[0]:
+                                if version:
+                                    self.add_Unit(empire, (i, j))
+                                    empire.army += 1
+                                else:
+                                    self.add_soldier(unit_locs, empire, empire2, empire3)
+                                    empire.army += 1
+                                if version:
+                                    self.add_Worker(empire, (i, j))
+                                    empire.workers += 1
+                                else:
+                                    self.add_worker(unit_locs, empire, empire2, empire3)
+                                    empire.workers += 1
+                                unit.score += 1
+                                break
+
+                    if (topo_map[unit.loc[0] + 1][unit.loc[1]] != 'w' and topo_map[unit.loc[0] + 1][
+                        unit.loc[1]] != 'p') or board[unit.loc[0] + 1][unit.loc[1]] == empire.name[0]:
+                        if version:
+                            self.add_Unit(empire, (unit.loc[0] + 1, unit.loc[1]))
+                            empire.army += 1
+                        else:
+                            self.add_soldier(unit_locs, empire, empire2, empire3)
+                            empire.army += 1
+                        if version:
+                            self.add_Worker(empire, (unit.loc[0] + 1, unit.loc[1]))
+                            empire.workers += 1
+                        else:
+                            self.add_worker(unit_locs, empire, empire2, empire3)
+                            empire.workers += 1
+                        unit.score += 1
+                        break
+
+    def engage(self, unit_locs, empire, enemy, stance, type, topo_map, version):
+        for unit in empire.units:
+            for i in range(unit.loc[0] - 1, unit.loc[0] + 2):
+                for j in range(unit.loc[1] - 1, unit.loc[1] + 2):
+                    if type == 'warship' and unit.name == empire.name:
+                        if unit_locs[i][j] == enemy.name[0] + 'S' and stance:
+                            enemy_unit = None
+                            for unit2 in enemy.units:
+                                if enemy_unit.loc == (i, j) and type(unit2) == Empire_Warship:
+                                    enemy_unit = unit2
+                                    break
+                            if enemy_unit != None:
+                                if unit.power > enemy_unit.power:
+                                    unit.power -= enemy_unit.power
+                                    unit_locs[unit.loc[0]][unit.loc[1]] = 1
+                                    if version:
+                                        if enemy_unit.loc[1] % 2 == 0:
+                                            unit.pos = (7 + enemy_unit.loc[1] * 45, (enemy_unit.loc[0] + 1) * 50 + 8)
+                                        else:
+                                            unit.pos = (7 + enemy_unit.loc[1] * 45, enemy_unit.loc[0] * 50 + 65 / 2)
+                                        Animation(x=unit.pos[0], y=unit.pos[1]).start(unit)
+                                        for hex in self.b.children:
+                                            if type(
+                                                    hex) == Empire_HexTile and hex.loc == unit.loc and hex.occupied == True:
+                                                hex.occupied = False
+                                            if type(hex) == Empire_HexTile and hex.loc[0] == enemy_unit.loc[0] and \
+                                                    hex.loc[1] == enemy_unit.loc[1] and hex.occupied == False:
+                                                hex.occupied = True
+
+                                    unit.loc = enemy_unit.loc
+                                    unit_locs[unit.loc[0]][unit.loc[1]] = empire.name[0] + 'S'
+                                    enemy.ships -= 1
+                                    enemy.units.remove(enemy_unit)
+
+                                elif unit.power < enemy_unit.power:
+                                    enemy_unit.power -= unit.power
+                                    unit_locs[unit.loc[0]][unit.loc[1]] = 1
+                                    empire.ships -= 1
+                                    empire.units.remove(unit)
+
+                        elif unit_locs[i][j] == enemy.name[0] + 'S' and stance == False:
+                            enemy_unit = None
+                            for unit2 in enemy.units:
+                                if enemy_unit.loc == (i, j) and type(unit2) == Empire_Warship:
+                                    enemy_unit = unit2
+                                    break
+                            if enemy_unit != None:
+                                if unit.power > enemy_unit.power:
+                                    unit.power -= enemy_unit.power
+                                    unit_locs[unit.loc[0]][unit.loc[1]] = 1
+                                    if version:
+                                        if enemy_unit.loc[1] % 2 == 0:
+                                            unit.pos = (7 + enemy_unit.loc[1] * 45, (enemy_unit.loc[0] + 1) * 50 + 8)
+                                        else:
+                                            unit.pos = (7 + enemy_unit.loc[1] * 45, enemy_unit.loc[0] * 50 + 65 / 2)
+                                        Animation(x=unit.pos[0], y=unit.pos[1]).start(unit)
+                                        for hex in self.b.children:
+                                            if type(
+                                                    hex) == Empire_HexTile and hex.loc == unit.loc and hex.occupied == True:
+                                                hex.occupied = False
+                                            if type(hex) == Empire_HexTile and hex.loc[0] == enemy_unit.loc[0] and \
+                                                    hex.loc[1] == enemy_unit.loc[1] and hex.occupied == False:
+                                                hex.occupied = True
+
+                                    unit.loc = enemy_unit.loc
+                                    unit_locs[unit.loc[0]][unit.loc[1]] = empire.name[0] + 'S'
+                                    enemy.ships -= 1
+                                    enemy.units.remove(enemy_unit)
+
+                                elif unit.power < enemy_unit.power:
+                                    max_dis = -float("inf")
+                                    curr_loc = unit.loc
+                                    if unit.loc[1] % 2 == 0:
+                                        for x in range(unit.loc[0], unit.loc[0] + 2):
+                                            for y in range(unit.loc[1] - 1, unit.loc[1] + 2):
+                                                dis = math.sqrt(
+                                                    ((enemy_unit.loc[0] - x) ** 2) + ((enemy_unit.loc[1] - y) ** 2))
+                                                if dis > max_dis and topo_map[x][y] != 'w' and topo_map[x][y] != 'm':
+                                                    max_dis = dis
+                                                    curr_loc = (x, y)
+
+                                        dis = math.sqrt(((enemy_unit.loc[0] - unit.loc[0] - 1) ** 2) + (
+                                                (enemy_unit.loc[1] - unit.loc[1]) ** 2))
+                                        if dis > max_dis and topo_map[unit.loc[0] - 1][unit.loc[1]] != 'w' and \
+                                                topo_map[unit.loc[0] - 1][unit.loc[1]] != 'm':
+                                            max_dis = dis
+                                            curr_loc = (unit.loc[0] - 1, unit.loc[1])
+                                    else:
+                                        for x in range(unit.loc[0] - 1, unit.loc[0] + 1):
+                                            for y in range(unit.loc[1] - 1, unit.loc[1] + 2):
+                                                dis = math.sqrt(
+                                                    ((enemy_unit.loc[0] - x) ** 2) + ((enemy_unit.loc[1] - y) ** 2))
+                                                if dis > max_dis and topo_map[x][y] != 'w' and topo_map[x][y] != 'm':
+                                                    max_dis = dis
+                                                    curr_loc = (x, y)
+
+                                        dis = math.sqrt(((enemy_unit.loc[0] - unit.loc[0] + 1) ** 2) + (
+                                                (enemy_unit.loc[1] - unit.loc[1]) ** 2))
+                                        if dis > max_dis and topo_map[unit.loc[0] + 1][unit.loc[1]] != 'w' and \
+                                                topo_map[unit.loc[0] + 1][unit.loc[1]] != 'm':
+                                            max_dis = dis
+                                            curr_loc = (unit.loc[0] + 1, unit.loc[1])
+
+                                    if curr_loc != unit.loc:
+                                        unit_locs[unit.loc[0]][unit.loc[1]] = 1
+                                        if version:
+                                            if curr_loc[1] % 2 == 0:
+                                                unit.pos = (7 + curr_loc[1] * 45, (curr_loc[0] + 1) * 50 + 8)
+                                            else:
+                                                unit.pos = (7 + curr_loc[1] * 45, curr_loc[0] * 50 + 65 / 2)
+                                            Animation(x=unit.pos[0], y=unit.pos[1]).start(unit)
+                                            for hex in self.b.children:
+                                                if type(
+                                                        hex) == Empire_HexTile and hex.loc == unit.loc and hex.occupied == True:
+                                                    hex.occupied = False
+                                                if type(hex) == Empire_HexTile and hex.loc[0] == curr_loc[0] and \
+                                                        hex.loc[1] == curr_loc[1] and hex.occupied == False:
+                                                    hex.occupied = True
+
+                                        unit.loc = curr_loc
+                                        unit_locs[unit.loc[0]][unit.loc[1]] = empire.name[0] + 'U'
+                        break
+
+                    elif type == 'soldier' and unit.name == empire.name:
+                        if unit_locs[i][j] == enemy.name[0] + 'U' and stance:
+                            enemy_unit = None
+                            for unit2 in enemy.units:
+                                if enemy_unit.loc == (i, j):
+                                    enemy_unit = unit2
+                                    break
+                            if enemy_unit != None and type(enemy_unit) == Empire_Worker:
+                                unit_locs[unit.loc[0]][unit.loc[1]] = 1
+                                if enemy_unit.loc[1] % 2 == 0:
+                                    unit.pos = (7 + enemy_unit.loc[1] * 45, (enemy_unit.loc[0] + 1) * 50 + 8)
+                                else:
+                                    unit.pos = (7 + enemy_unit.loc[1] * 45, enemy_unit.loc[0] * 50 + 65 / 2)
+                                Animation(x=unit.pos[0], y=unit.pos[1]).start(unit)
+                                for hex in self.b.children:
+                                    if type(hex) == Empire_HexTile and hex.loc == unit.loc and hex.occupied == True:
+                                        hex.occupied = False
+                                    if type(hex) == Empire_HexTile and hex.loc[0] == enemy_unit.loc[0] and hex.loc[1] == \
+                                            enemy_unit.loc[1] and hex.occupied == False:
+                                        hex.occupied = True
+                                unit.loc = enemy_unit.loc
+                                unit_locs[unit.loc[0]][unit.loc[1]] = empire.name[0] + 'U'
+                                enemy.workers -= 1
+                                enemy.units.remove(enemy_unit)
+
+                            elif enemy_unit != None and type(enemy_unit) == Empire_Unit:
+                                if unit.power > enemy_unit.power:
+                                    unit.power -= enemy_unit.power
+                                    unit_locs[unit.loc[0]][unit.loc[1]] = 1
+                                    if enemy_unit.loc[1] % 2 == 0:
+                                        unit.pos = (7 + enemy_unit.loc[1] * 45, (enemy_unit.loc[0] + 1) * 50 + 8)
+                                    else:
+                                        unit.pos = (7 + enemy_unit.loc[1] * 45, enemy_unit.loc[0] * 50 + 65 / 2)
+                                    Animation(x=unit.pos[0], y=unit.pos[1]).start(unit)
+                                    for hex in self.b.children:
+                                        if type(hex) == Empire_HexTile and hex.loc == unit.loc and hex.occupied == True:
+                                            hex.occupied = False
+                                        if type(hex) == Empire_HexTile and hex.loc[0] == enemy_unit.loc[0] and hex.loc[
+                                            1] == enemy_unit.loc[1] and hex.occupied == False:
+                                            hex.occupied = True
+                                    unit.loc = enemy_unit.loc
+                                    unit_locs[unit.loc[0]][unit.loc[1]] = empire.name[0] + 'U'
+                                    enemy.army -= 1
+                                    enemy.units.remove(enemy_unit)
+
+                                elif unit.power < enemy_unit.power:
+                                    enemy_unit.power -= unit.power
+                                    unit_locs[unit.loc[0]][unit.loc[1]] = 1
+                                    empire.army -= 1
+                                    empire.units.remove(unit)
+
+                        elif unit_locs[i][j] == enemy.name[0] + 'U' and stance == False:
+                            enemy_unit = None
+                            for unit2 in enemy.units:
+                                if enemy_unit.loc == (i, j):
+                                    enemy_unit = unit2
+                                    break
+
+                            if enemy_unit != None and type(enemy_unit) == Empire_Worker:
+                                unit_locs[unit.loc[0]][unit.loc[1]] = 1
+                                if enemy_unit.loc[1] % 2 == 0:
+                                    unit.pos = (7 + enemy_unit.loc[1] * 45, (enemy_unit.loc[0] + 1) * 50 + 8)
+                                else:
+                                    unit.pos = (7 + enemy_unit.loc[1] * 45, enemy_unit.loc[0] * 50 + 65 / 2)
+                                Animation(x=unit.pos[0], y=unit.pos[1]).start(unit)
+                                for hex in self.b.children:
+                                    if type(hex) == Empire_HexTile and hex.loc == unit.loc and hex.occupied == True:
+                                        hex.occupied = False
+                                    if type(hex) == Empire_HexTile and hex.loc[0] == enemy_unit.loc[0] and hex.loc[1] == \
+                                            enemy_unit.loc[1] and hex.occupied == False:
+                                        hex.occupied = True
+                                unit.loc = enemy_unit.loc
+                                unit_locs[unit.loc[0]][unit.loc[1]] = empire.name[0] + 'U'
+                                enemy.workers -= 1
+                                enemy.units.remove(enemy_unit)
+
+                            elif enemy_unit != None and type(enemy_unit) == Empire_Unit:
+                                if unit.power > enemy_unit.power:
+                                    unit.power -= enemy_unit.power
+                                    unit_locs[unit.loc[0]][unit.loc[1]] = 1
+                                    if enemy_unit.loc[1] % 2 == 0:
+                                        unit.pos = (7 + enemy_unit.loc[1] * 45, (enemy_unit.loc[0] + 1) * 50 + 8)
+                                    else:
+                                        unit.pos = (7 + enemy_unit.loc[1] * 45, enemy_unit.loc[0] * 50 + 65 / 2)
+                                    Animation(x=unit.pos[0], y=unit.pos[1]).start(unit)
+                                    for hex in self.b.children:
+                                        if type(hex) == Empire_HexTile and hex.loc == unit.loc and hex.occupied == True:
+                                            hex.occupied = False
+                                        if type(hex) == Empire_HexTile and hex.loc[0] == enemy_unit.loc[0] and hex.loc[
+                                            1] == enemy_unit.loc[1] and hex.occupied == False:
+                                            hex.occupied = True
+                                    unit.loc = enemy_unit.loc
+                                    unit_locs[unit.loc[0]][unit.loc[1]] = empire.name[0] + 'U'
+                                    enemy.army -= 1
+                                    enemy.units.remove(enemy_unit)
+
+                                elif unit.power < enemy_unit.power:
+                                    max_dis = -float("inf")
+                                    curr_loc = unit.loc
+                                    if unit.loc[1] % 2 == 0:
+                                        for x in range(unit.loc[0], unit.loc[0] + 2):
+                                            for y in range(unit.loc[1] - 1, unit.loc[1] + 2):
+                                                dis = math.sqrt(
+                                                    ((enemy_unit.loc[0] - x) ** 2) + ((enemy_unit.loc[1] - y) ** 2))
+                                                if dis > max_dis and topo_map[x][y] != 'w' and topo_map[x][y] != 'm':
+                                                    max_dis = dis
+                                                    curr_loc = (x, y)
+
+                                        dis = math.sqrt(((enemy_unit.loc[0] - unit.loc[0] - 1) ** 2) + (
+                                                (enemy_unit.loc[1] - unit.loc[1]) ** 2))
+                                        if dis > max_dis and topo_map[unit.loc[0] - 1][unit.loc[1]] != 'w' and \
+                                                topo_map[unit.loc[0] - 1][unit.loc[1]] != 'm':
+                                            max_dis = dis
+                                            curr_loc = (unit.loc[0] - 1, unit.loc[1])
+                                    else:
+                                        for x in range(unit.loc[0] - 1, unit.loc[0] + 1):
+                                            for y in range(unit.loc[1] - 1, unit.loc[1] + 2):
+                                                dis = math.sqrt(
+                                                    ((enemy_unit.loc[0] - x) ** 2) + ((enemy_unit.loc[1] - y) ** 2))
+                                                if dis > max_dis and topo_map[x][y] != 'w' and topo_map[x][y] != 'm':
+                                                    max_dis = dis
+                                                    curr_loc = (x, y)
+
+                                        dis = math.sqrt(((enemy_unit.loc[0] - unit.loc[0] + 1) ** 2) + (
+                                                (enemy_unit.loc[1] - unit.loc[1]) ** 2))
+                                        if dis > max_dis and topo_map[unit.loc[0] + 1][unit.loc[1]] != 'w' and \
+                                                topo_map[unit.loc[0] + 1][unit.loc[1]] != 'm':
+                                            max_dis = dis
+                                            curr_loc = (unit.loc[0] + 1, unit.loc[1])
+
+                                    if curr_loc != unit.loc:
+                                        unit_locs[unit.loc[0]][unit.loc[1]] = 1
+                                        if version:
+                                            if curr_loc[1] % 2 == 0:
+                                                unit.pos = (7 + curr_loc[1] * 45, (curr_loc[0] + 1) * 50 + 8)
+                                            else:
+                                                unit.pos = (7 + curr_loc[1] * 45, curr_loc[0] * 50 + 65 / 2)
+                                            Animation(x=unit.pos[0], y=unit.pos[1]).start(unit)
+                                            for hex in self.b.children:
+                                                if type(
+                                                        hex) == Empire_HexTile and hex.loc == unit.loc and hex.occupied == True:
+                                                    hex.occupied = False
+                                                if type(hex) == Empire_HexTile and hex.loc[0] == curr_loc[0] and \
+                                                        hex.loc[1] == curr_loc[1] and hex.occupied == False:
+                                                    hex.occupied = True
+                                        unit.loc = curr_loc
+                                        unit_locs[unit.loc[0]][unit.loc[1]] = empire.name[0] + 'U'
+                        break
+
+    def add_soldier(self, unit_locs, empire, empire2, empire3):
+        if empire.treasury >= 1000 and empire.manpower >= 1000 and unit_locs[empire.capital[0]][empire.capital[1]] == 1:
+            s = Empire_Unit((0, 0), empire.capital, empire2.tile_arr, empire3.tile_arr, empire.name)
+            empire.treasury -= 1000
+            empire.manpower -= 1000
+            empire.army += 1
+            unit_locs[empire.capital[0]][empire.capital[1]] = empire.name[0] + 'U'
+            empire.units.append(s)
+
+    def add_ship(self, unit_locs, empire, empire2, empire3):
+        loc_x = 0
+        loc_y = 0
+        free_tile = False
+        for x in range(empire.capital[0] - 1, empire.capital[0] + 2):
+            for y in range(empire.capital[1] - 1, empire.capital[1] + 2):
+                if (locations[x][y] == 'w' or locations[x][y] == 'p') and unit_locs[empire.capital[0]][
+                    empire.capital[1]] == 1 and empire2.tile_arr[x][y] != 'O' and empire3.tile_arr[x][y] != 'O':
+                    loc_x = x
+                    loc_y = y
+                    free_tile = True
+
+        if empire.treasury >= 2000 and empire.manpower > 1000 and free_tile:
+            s = Empire_Unit((0, 0), (loc_x, loc_y), empire2.tile_arr, empire3.tile_arr, empire.name)
+            empire.treasury -= 2000
+            empire.manpower -= 1000
+            empire.ships += 1
+            unit_locs[loc_x][loc_y] = empire.name[0] + 'S'
+            empire.units.append(s)
+
+    def add_worker(self, unit_locs, empire, empire2, empire3):
+        loc_x = 0
+        loc_y = 0
+        free_tile = False
+        for x in range(empire.capital[0] - 1, empire.capital[0] + 2):
+            for y in range(empire.capital[1] - 1, empire.capital[1] + 2):
+                if locations[x][y] != 'w' and locations[x][y] != 'm' and unit_locs[empire.capital[0]][
+                    empire.capital[1]] == 1 and empire2.tile_arr[x][y] != 'O' and empire3.tile_arr[x][y] != 'O':
+                    loc_x = x
+                    loc_y = y
+                    free_tile = True
+
+        if empire.treasury >= 500 and empire.manpower > 300 and free_tile:
+            s = Empire_Unit((0, 0), (loc_x, loc_y), empire2.tile_arr, empire3.tile_arr, empire.name)
+            empire.treasury -= 500
+            empire.manpower -= 300
+            empire.workers += 1
+            unit_locs[loc_x][loc_y] = empire.name[0] + 'U'
+            empire.units.append(s)
+
+    def unpack(self, list, board, topo_map, unit_locs, empire, empire2, empire3, version):
+        for i in list:
+            stance = None
+            if empire.state == 'Peace':
+                if i == 1:  # soldier capture territory
+                    print(1)
+                    self.capture(board, topo_map, unit_locs, empire, empire2, empire3, stance, version)
+                    print(1)
+                if i == 2:  # soldier reinforce important territories
+                    print(2)
+                    self.reinforce(board, topo_map, empire, unit_locs, empire2, empire3, version)
+                    print(2)
+                if i == 3:  # soldier add manpower for soldier
+                    self.add_manpower(empire, "soldier")
+                if i == 4:
+                    print(4)
+                    self.worker_action(board, topo_map, unit_locs, empire, empire2, empire3, None, stance, version)
+                    print(4)
+                if i == 5:
+                    self.patrol(board, unit_locs, empire, version)
+                if i == 6:
+                    self.colonize(board, topo_map, unit_locs, empire, empire2, empire3, version)
+
+                if i == 7:
+                    self.add_manpower(empire, "warship")
+
+            elif empire.state == 'War':
+                enemy_empire = None
+                if empire2.state == 'War':
+                    stance = empire.army > empire2.army
+                    enemy_empire = empire2
+                elif empire3.state == 'War':
+                    stance = empire.army > empire3.army
+                    enemy_empire = empire3
+
+                if i == 1:  # soldier capture territory
+                    self.capture(board, topo_map, unit_locs, empire, empire2, empire3, stance, version)
+                if i == 2:  # soldier add manpower for soldier
+                    self.engage(unit_locs, empire, enemy_empire, stance, 'soldier', topo_map, version)
+                if i == 3:
+                    self.add_manpower(empire, "soldier")
+                if i == 4:
+                    self.worker_action(board, topo_map, unit_locs, empire, empire2, empire3, enemy_empire, stance,
+                                       version)
+                if i == 5:
+                    self.patrol(board, unit_locs, empire, version)
+                if i == 6:
+                    self.add_manpower(empire, "warship")
+                if i == 7:
+                    self.engage(unit_locs, empire, enemy_empire, stance, 'warship', topo_map, version)
+
+            if i == 8:
+                if version:
+                    self.add_Unit(empire, empire.capital)
+                else:
+                    self.add_soldier(unit_locs, empire, empire2, empire3)
+            if i == 9:
+                if version:
+                    self.add_Worker(empire, empire.capital)
+                else:
+                    self.add_worker(unit_locs, empire, empire2, empire3)
+            if i == 10:
+                if version:
+                    self.add_WarShip(empire, empire.capital)
+                else:
+                    self.add_ship(unit_locs, empire, empire2, empire3)
+
+        return board
+
+    def minimax(self, board, topo_map, unit_locs, empire, empire2, empire3, depth, current_empire, alpha, beta, pack):
+        a = [[1, 2, 3], [4], [5, 6, 7], [8], [9], [10]]
+        possible_moves = list(itertools.product(*a))
+        optimal_decision = float("inf")
+
+        if depth == 1 or self.year == 250:
+            # print(self.evaluate(board, empire, empire2, empire3), current_empire.name, depth)
+            return self.evaluate(board, empire, empire2, empire3), pack
+
+        if current_empire.name == self.e1.name:
+            bestVal = MIN
+            for decision_pack in possible_moves:
+                # print(decision_pack)
+                result = self.unpack(decision_pack, board, topo_map, unit_locs, empire, empire2, empire3, False)
+                # current_empire.update_treasury()
+                # current_empire.update_manpower()
+                # current_empire.update_stability()
+                for unit in current_empire.units:
+                    unit.score = 0
+                value = self.minimax(copy.deepcopy(result), topo_map, copy.deepcopy(unit_locs),
+                                     self.copy_empire(empire2), self.copy_empire(empire), self.copy_empire(empire3),
+                                     depth + 1, self.copy_empire(empire2), alpha, beta, decision_pack)
+                if bestVal < value[0]:
+                    bestVal = value[0]
+                    optimal_decision = value[1]
+                alpha = max(alpha, bestVal)
+                if beta <= alpha:
+                    break
+
+            return bestVal, optimal_decision
+
+        elif current_empire.name == self.empire.name:
+            bestVal = MAX
+            for decision_pack in possible_moves:
+                # print(decision_pack)
+                result = self.unpack(decision_pack, board, topo_map, unit_locs, empire, empire2, empire3, False)
+                # current_empire.update_treasury()
+                # current_empire.update_manpower()
+                # current_empire.update_stability()
+                for unit in current_empire.units:
+                    unit.score = 0
+                value = self.minimax(copy.deepcopy(result), topo_map, copy.deepcopy(unit_locs),
+                                     self.copy_empire(empire3), self.copy_empire(empire2), self.copy_empire(empire),
+                                     depth + 1, self.copy_empire(empire3), alpha, beta, decision_pack)
+                if bestVal > value[0]:
+                    bestVal = value[0]
+                    optimal_decision = value[1]
+                beta = min(beta, bestVal)
+                if beta <= alpha:
+                    break
+            return bestVal, optimal_decision
+
+        elif current_empire.name == self.e2.name:
+            bestVal = MAX
+            for decision_pack in possible_moves:
+                # print(decision_pack)
+                result = self.unpack(decision_pack, board, topo_map, unit_locs, empire, empire2, empire3, False)
+                # current_empire.update_treasury()
+                # current_empire.update_manpower()
+                # current_empire.update_stability()
+                for unit in current_empire.units:
+                    unit.score = 0
+
+                value = self.minimax(copy.deepcopy(result), topo_map, copy.deepcopy(unit_locs),
+                                     self.copy_empire(empire2), self.copy_empire(empire3), self.copy_empire(empire),
+                                     depth + 1, self.copy_empire(empire2), alpha, beta, decision_pack)
+                if bestVal > value[0]:
+                    bestVal = value[0]
+                    optimal_decision = value[1]
+                beta = min(beta, bestVal)
+                if beta <= alpha:
+                    break
+            return bestVal, optimal_decision
+
+    def checkWin(self):
+        if self.year < 250:
+            if self.empire.state == 'War' and self.e1.state == 'Defeat' and self.e2.state == 'Defeat':
+                game_screen = self.manager.get_screen('Victory screen')
+                game_screen.init_scoring(self.empire, None, None)
+                self.manager.current = 'Victory screen'
+                self.manager.transition.direction = 'right'
+            elif self.e1.state == 'War' and self.empire.state == 'Defeat' and self.e2.state == 'Defeat':
+                game_screen = self.manager.get_screen('Victory screen')
+                game_screen.init_scoring(self.e1, None, None)
+                self.manager.current = 'Victory screen'
+                self.manager.transition.direction = 'right'
+            elif self.e2.state == 'War' and self.empire.state == 'Defeat' and self.e1.state == 'Defeat':
+                game_screen = self.manager.get_screen('Victory screen')
+                game_screen.init_scoring(self.e2, None, None)
+                self.manager.current = 'Victory screen'
+                self.manager.transition.direction = 'right'
+
+        if self.year == -200:
+            if self.supremacy(self.empire, self.e1) and self.supremacy(self.empire, self.e2):
+                game_screen = self.manager.get_screen('Victory screen')
+                game_screen.init_scoring(self.empire, self.e1, self.e2)
+                self.manager.current = 'Victory screen'
+                self.manager.transition.direction = 'right'
+            elif self.supremacy(self.e1, self.empire) and self.supremacy(self.e1, self.e2):
+                game_screen = self.manager.get_screen('Victory screen')
+                game_screen.init_scoring(self.e1, self.empire, self.e2)
+                self.manager.current = 'Victory screen'
+                self.manager.transition.direction = 'right'
+            elif self.supremacy(self.e2, self.empire) and self.supremacy(self.e2, self.e1):
+                game_screen = self.manager.get_screen('Victory screen')
+                game_screen.init_scoring(self.e2, self.empire, self.e1)
+                self.manager.current = 'Victory screen'
+                self.manager.transition.direction = 'right'
+
+    # todo IMMEDIATELY WORK DEFEAT AND CITY MANAGEMENT
+
+    def diplomacy(self, empire):
+        num_tiles1 = 0
+        num_tiles2 = 0
+        for i in range(48):
+            for j in range(70):
+                if empire == self.e1:
+                    if self.e2.tile_arr[i][j] == 'O':
+                        num_tiles1 += self.check_neighbour(i, j, empire)
+                elif empire == self.e2:
+                    if self.e1.tile_arr[i][j] == 'O':
+                        num_tiles1 += self.check_neighbour(i, j, empire)
+
+                if self.empire.tile_arr[i][j] == 'O':
+                    num_tiles2 += self.check_neighbour(i, j, empire)
+
+        if empire.state == 'War':
+            if (empire.tiles < empire.original_tiles * 0.7 and empire.tile_arr[empire.capital[0]][
+                empire.capital[1]] != '0') or empire.tiles < empire.original_tiles * 0.5:
+                empire.state = 'Defeat'
+                empire.farms = 0
+                empire.tiles = 0
+                empire.original_tiles = 0
+                empire.stability = 0
+                empire.treasury = 0
+                empire.army = 0
+                empire.ships = 0
+                empire.cities = 0
+                empire.workers = 0
+                empire.capital = (0, 0)
+                empire.manpower = 0
+                empire.tile_arr = buildBoard(48, 70)
+
+                for child in self.b.children:
+                    target_source = ''
+                    if empire.name == 'Rome':
+                        target_source = '35_rome_hex.png'
+                    elif empire.name == 'Carthage':
+                        target_source = '36_carthage_hex.png'
+                    elif empire.name == 'Egypt':
+                        target_source = '37_egypt_hex.png'
+
+                        if type(child) == Empire_HexTile and child.source == os.path.join('assets', 'images',
+                                                                                          target_source):
+                            j = child.loc[1]
+                            i = child.loc[0]
+                            if child.loc[1] % 2 == 0:
+
+                                if background.read_pixel(j * dis_width + 10,
+                                                         background.height - dis_height - i * dis_height) == green:
+                                    child.source = os.path.join('assets', 'images', '18_hex_green.png')
+
+                                elif background.read_pixel(j * dis_width + 10,
+                                                           background.height - dis_height - i * dis_height) == yellow:
+                                    child.source = os.path.join('assets', 'images', '19_hex_yellow.png')
+                                else:
+                                    child.source = os.path.join('assets', 'images', '39_hex_grey.png')
+                            else:
+                                if background.read_pixel(j * dis_width + 10,
+                                                         background.height - dis_height / 2 - i * dis_height) == green:
+                                    child.source = os.path.join('assets', 'images', '18_hex_green.png')
+
+                                elif background.read_pixel(j * dis_width + 10,
+                                                           background.height - dis_height / 2 - i * dis_height) == yellow:
+                                    child.source = os.path.join('assets', 'images', '19_hex_yellow.png')
+                                else:
+                                    child.source = os.path.join('assets', 'images', '39_hex_grey.png')
+
+                        elif (type(child) == Empire_Unit or type(child) == Empire_Worker) and child.name == empire.name:
+                            self.b.remove_widget(child)
+
+            elif (empire.tiles <= empire.original_tiles * 0.8 and empire.tiles < empire.original_tiles and
+                  empire.tile_arr[empire.capital[0]][empire.capital[1]] != '0'):
+                if empire != self.empire:
+                    self.decisions_Popup(empire, "peace")
+                else:
+                    pass  # todo advisory (part of tutorial work)
+
+        if self.e2.state == 'Defeat' or self.e1.state == 'Defeat':
+            self.dip2["relations"] = -float("inf")
+        else:
+            self.dip2["relations"] = num_tiles1 * (-5) + (self.e2.army + random.randint(-1, 1)) * -10 + (
+                    self.e1.army + random.randint(-1, 1)) * 10  # relations with other empire
+
+        if empire == self.e1:
+            if self.e1.state == 'Defeat' or self.empire.state == 'Defeat':
+                self.dip1["relations"] = -float("inf")
+            else:
+                self.dip1["relations"] = num_tiles2 * (-5) + (self.empire.army + random.randint(-1,
+                                                                                                1)) * -10 + self.e1.army * 10  # relations with player empire and comp 1
+
+        else:
+            if self.e2.state == 'Defeat' and self.empire.state == 'Defeat':
+                self.dip3["relations"] = -float("inf")
+            else:
+                self.dip3["relations"] = num_tiles2 * (-5) + (self.empire.army + random.randint(-1,
+                                                                                                1)) * -10 + self.e2.army * 10  # relations with player empire and comp 2
+
+        if self.dip1["war"] == True:
+            self.dip1["relations"] = - 100
+
+        if self.dip2["war"] == True:
+            self.dip2["relations"] = - 100
+
+        if self.dip3["war"] == True:
+            self.dip3["relations"] = - 100
+
+        if self.dip2["relations"] > -float("inf"):
+            if self.dip2["relations"] > -100:
+                if self.dip2["relations"] > -20:
+                    self.dip2["trade agreement"] = True
+                elif self.dip2["relations"] > 10:
+                    self.dip2["non aggression"] = True
+                elif self.dip2["relations"] > 30:
+                    self.dip2["military access"] = True
+
+            elif self.dip2["relations"] < -80:
+                while self.e1.treasury > 1000:
+                    self.add_Unit(self.e1)
+                while self.e2.treasury > 1000:
+                    self.add_Unit(self.e2)
+
+            elif self.dip2["relations"] < -100 and (
+                    self.supremacy(self.e1, self.e2) == True or self.supremacy(self.e2, self.e1) == True) and self.dip2[
+                "non aggression"] == False:
+                self.e1.state = 'War'
+                self.e2.state = 'War'
+                self.dip2["trade agreement"] = False
+                self.dip2["military access"] = False
+
+        ##################################################################################
+        if empire == self.e1 and self.dip1["relations"] > -float("inf"):
+            if self.dip1["relations"] > -100:
+                if self.dip1["relations"] > -20 and self.dip1["trade agreement"] != True:
+                    self.decisions_Popup(empire, "trade agreement")
+                elif self.dip1["relations"] > 10 and self.supremacy(self.empire, self.e1) == True and self.dip1[
+                    "non aggression"] != True:
+                    self.decisions_Popup(empire, "non aggression")
+                elif self.dip1["relations"] > 30 and self.supremacy(self.empire, self.e1) == False and self.dip1[
+                    "military access"] != True:
+                    self.decisions_Popup(empire, "military access")
+            elif self.dip1["relations"] < -100 and self.supremacy(self.empire, self.e1) == True:
+                while self.e1.treasury > 1000:
+                    self.add_Unit(self.e1)
+
+            elif self.dip1["relations"] < -100 and self.supremacy(self.empire, self.e1) == False and self.dip1[
+                "war"] != True and self.dip1["non aggression"] == False:
+                self.decisions_Popup(self.e1, "War")
+                self.e1.state = 'War'
+                self.dip1["war"] = True
+                self.empire.state = 'War'
+                self.dip1["trade agreement"] = False
+                self.dip1["non aggression"] = False
+                self.dip1["military access"] = False
+
+        elif empire == self.e2 and self.dip3["relations"] > -float("inf"):
+            if self.dip3["relations"] > -100:
+                if self.dip3["relations"] > -20 and self.dip3["trade agreement"] != True:
+                    self.decisions_Popup(self.e2, "trade agreement")
+                elif self.dip3["relations"] > 10 and self.supremacy(self.empire, self.e2) == True and self.dip3[
+                    "non aggression"] != True:
+                    self.decisions_Popup(self.e2, "non aggression")
+                elif self.dip3["relations"] > 30 and self.supremacy(self.empire, self.e2) == False and self.dip3[
+                    "military access"] != True:
+                    self.decisions_Popup(self.e2, "military access")
+            elif self.dip3["relations"] < -100 and self.supremacy(self.empire, self.e2) == True:
+                while self.e2.treasury > 1000:
+                    self.add_Unit(self.e2)
+
+            elif self.dip3["relations"] < -100 and self.supremacy(self.empire, self.e2) == False and self.dip3[
+                "war"] != True and self.dip3["non aggression"] == False:
+                self.decisions_Popup(self.e2, "War")
+                self.e2.state = 'War'
+                self.empire.state = 'War'
+                self.dip1["war"] = True
+                self.dip3["trade agreement"] = False
+                self.dip3["non aggression"] = False
+                self.dip3["military access"] = False
+
+    def supremacy(self, empire, empire2):
+        counter1 = 0
+        counter2 = 0
+
+        if empire.army > empire2.army:
+            counter1 += 1
+        elif empire.army < empire2.army:
+            counter2 += 1
+        if empire.workers > empire2.workers:
+            counter1 += 1
+        elif empire.workers < empire2.workers:
+            counter2 += 1
+        if empire.farms > empire2.farms:
+            counter1 += 1
+        elif empire.farms < empire2.farms:
+            counter2 += 1
+        if empire.tiles > empire2.tiles:
+            counter1 += 1
+        elif empire.tiles < empire2.tiles:
+            counter2 += 1
+        if empire.tiles > empire2.tiles:
+            counter1 += 1
+        elif empire.treasury < empire2.treasury:
+            counter2 += 1
+        if empire.treasury > empire2.treasury:
+            counter1 += 1
+        elif empire.manpower < empire2.manpower:
+            counter2 += 1
+
+        if counter1 > counter2:
+            return True
+        else:
+            return False
+
+    def check_neighbour(self, x, y, empire):
+        counter = 0
+        if x > 0 and y > 0:
+            for i in range(x - 1, x + 1):
+                for j in range(y - 1, y + 1):
+                    if empire.tile_arr[i][j] == 'O':
+                        counter += 1
+                        break
+
+            return counter
+
+        elif x == 0 and y == 0:
+            for i in range(x, x + 1):
+                for j in range(y, y + 1):
+                    if empire.tile_arr[i][j] == 'O':
+                        counter += 1
+                        break
+
+            return counter
+
+        elif x == 0 and y > 0:
+            for i in range(x, x + 1):
+                for j in range(y - 1, y + 1):
+                    if empire.tile_arr[i][j] == 'O':
+                        counter += 1
+                        break
+
+            return counter
+
+        elif x > 0 and y == 0:
+            for i in range(x - 1, x + 1):
+                for j in range(y, y + 1):
+                    if empire.tile_arr[i][j] == 'O':
+                        counter += 1
+                        break
+
+            return counter
+
+    def add_Unit(self, empire, loc):
+        free = True
+        for child in self.b.children:
+            if type(child) == Empire_HexTile and child.loc == loc and child.occupied == True:
+                free = False
+                break
+
+        if empire.treasury >= 1000 and empire.manpower >= 1000 and free:
+            corrector_y = 0
+            if loc[1] % 2 == 0:
+                corrector_y = 57
+            else:
+                corrector_y = 65 / 2
+
+            if empire == self.b.Rome:
+                self.s = Empire_Unit((7 + loc[1] * 45, corrector_y + loc[0] * 50), loc, self.b.Carthage.tile_arr,
+                                     self.b.Egypt.tile_arr, "Rome")
+            elif empire == self.b.Carthage:
+                self.s = Empire_Unit((7 + loc[1] * 45, corrector_y + loc[0] * 50), loc, self.b.Rome.tile_arr,
+                                     self.b.Egypt.tile_arr, "Carthage")
+            else:
+                self.s = Empire_Unit((7 + loc[1] * 45, corrector_y + loc[0] * 50), loc, self.b.Rome.tile_arr,
+                                     self.b.Carthage.tile_arr, "Egypt")
+
+            self.b.add_widget(self.s)
+
+            for hex in self.b.children:
+                if type(hex) == Empire_HexTile and hex.loc[0] == self.s.loc[0] and hex.loc[1] == self.s.loc[1]:
+                    hex.occupied = True
+
+            empire.treasury -= 1000
+            empire.manpower -= 1000
+            empire.army += 1
+            empire.units.append(self.s)
+            if empire == self.empire:
+                self.max_score = self.empire.army * 3 + self.empire.workers * 3 + self.empire.ships * 3
+                print(self.max_score)
+                self.update_labels(empire)
+
+    def add_Worker(self, empire, loc):
+        range_x = 0
+        range_y = 0
+        slave_market = False
+        free = True
+
+        for x in range(loc[0] - 1, loc[0] + 2):
+            for y in range(loc[1] - 1, loc[1] + 2):
+                if empire == self.e1:
+                    if locations[x][y] != 'w' and locations[x][y] != 'p' and locations[x][y] != 'm' and \
+                            self.empire.tile_arr[x][y] != 'O' and self.e2.tile_arr[x][y] != 'O':
+                        range_x = y
+                        range_y = x
+                        slave_market = True
+                        break
+                elif empire == self.empire:
+                    if locations[x][y] != 'w' and locations[x][y] != 'p' and locations[x][y] != 'm' and \
+                            self.e1.tile_arr[x][y] != 'O' and self.e2.tile_arr[x][y] != 'O':
+                        range_x = y
+                        range_y = x
+                        slave_market = True
+                        break
+                else:
+                    if locations[x][y] != 'w' and locations[x][y] != 'p' and locations[x][y] != 'm' and \
+                            self.empire.tile_arr[x][y] != 'O' and self.e1.tile_arr[x][y] != 'O':
+                        range_x = y
+                        range_y = x
+                        slave_market = True
+                        break
+
+        for child in self.b.children:
+            if type(child) == Empire_HexTile and child.loc == (range_y, range_x) and child.occupied == True:
+                free = False
+                break
+
+        if empire.treasury >= 500 and empire.manpower > 300 and slave_market and free:
+            corrector_y = 0
+            if range_x % 2 == 0:
+                corrector_y = 8 + 50
+            else:
+                corrector_y = 8 + 50 / 2
+
+            if empire == self.b.Rome:
+                self.s = Empire_Worker((8 + range_x * 45, corrector_y + range_y * 50), (range_y, range_x),
+                                       self.b.Carthage.tile_arr, self.b.Egypt.tile_arr, "Rome")
+            elif empire == self.b.Carthage:
+                self.s = Empire_Worker((8 + range_x * 45, corrector_y + range_y * 50), (range_y, range_x),
+                                       self.b.Rome.tile_arr, self.b.Egypt.tile_arr, "Carthage")
+            else:
+                self.s = Empire_Worker((8 + range_x * 45, corrector_y + range_y * 50), (range_y, range_x),
+                                       self.b.Rome.tile_arr, self.b.Carthage.tile_arr, "Egypt")
+
+            self.b.add_widget(self.s)
+            for hex in self.b.children:
+                if type(hex) == Empire_HexTile and hex.loc[0] == self.s.loc[0] and hex.loc[1] == self.s.loc[1]:
+                    hex.occupied = True
+
+            empire.treasury -= 500
+            empire.manpower -= 300
+            empire.workers += 1
+            empire.units.append(self.s)
+            if empire == self.empire:
+                self.max_score = self.empire.army * 3 + self.empire.workers * 3 + self.empire.ships * 3
+                print(self.max_score)
+                self.update_labels(empire)
+
+    def add_WarShip(self, empire, loc):
+        free = True
+        port = False
+        range_x = 0
+        range_y = 0
+        for x in range(loc[0] - 1, loc[0] + 2):
+            for y in range(loc[1] - 1, loc[1] + 2):
+                if locations[x][y] == 'w' or locations[x][y] == 'p':
+                    range_x = y
+                    range_y = x
+                    port = True
+                    break
+
+        for child in self.b.children:
+            if type(child) == Empire_HexTile and child.loc == (range_y, range_x) and child.occupied == True:
+                free = False
+                break
+
+        if empire.treasury >= 2000 and empire.manpower > 1000 and port == True and free == True:
+            corrector_y = 0
+            if range_x % 2 == 0:
+                corrector_y = 8 + 50
+            else:
+                corrector_y = 8 + 50 / 2
+
+            if empire == self.b.Rome:
+                self.s = Empire_Warship((8 + range_x * 45, corrector_y + range_y * 50), (range_y, range_x),
+                                        self.b.Carthage.tile_arr, self.b.Egypt.tile_arr, "Rome")
+            elif empire == self.b.Carthage:
+                self.s = Empire_Warship((8 + range_x * 45, corrector_y + range_y * 50), (range_y, range_x),
+                                        self.b.Rome.tile_arr, self.b.Egypt.tile_arr, "Carthage")
+            else:
+                self.s = Empire_Warship((8 + range_x * 45, corrector_y + range_y * 50), (range_y, range_x),
+                                        self.b.Rome.tile_arr, self.b.Carthage.tile_arr, "Egypt")
+
+            self.b.add_widget(self.s)
+
+            for hex in self.b.children:
+                if type(hex) == Empire_HexTile and hex.loc[0] == self.s.loc[0] and hex.loc[1] == self.s.loc[1]:
+                    hex.occupied = True
+
+            empire.treasury -= 2000
+            empire.manpower -= 1000
+            empire.ships += 1
+            empire.units.append(self.s)
+            if empire == self.empire:
+                self.max_score = self.empire.army * 3 + self.empire.workers * 3 + self.empire.ships * 3
+                print(self.max_score)
+                self.update_labels(empire)
+
+    def UPDATESPopup(self, message):
+        layout = GridLayout(cols=1, padding=10)
+        type = Label(text=message, font_size=26, font_style='bold')
+        layout.add_widget(type)
+        b = Button(text="ACKNOWLEDGED", font_size=28)
+        layout.add_widget(b)
+        popup = Popup(title="ERROR", content=layout, size_hint=(None, None), size=(400, 400), auto_dismiss=False)
+        popup.open()
+        b.bind(on_release=popup.dismiss)
+
+    def decisions_Popup(self, empire, proposal):
+        layout = GridLayout(cols=1, padding=10)
+        type = Label(text=empire.name + " wants " + proposal, font_size=24, font_style='bold')
+        layout.add_widget(type)
+        popup = Popup(title="A Proposal", content=layout, size_hint=(None, None), size=(400, 400), auto_dismiss=False)
+        if proposal == 'peace':
+            b1 = Decisions_Btn((layout.width / 2, layout.height / 2), "Agree to " + proposal, self.empire, self,
+                               size_hint=(0.5, 0.3))
+            b2 = Decisions_Btn((layout.width / 2, layout.height / 2), "Disagree to " + proposal, self.empire, self,
+                               size_hint=(0.5, 0.3))
+            layout.add_widget(b1)
+            layout.add_widget(b2)
+            b1.bind(on_release=popup.dismiss)
+            b2.bind(on_release=popup.dismiss)
+
+        elif proposal == 'War':
+            b = Button(text="They will pay for this...", font_size=22)
+            b.bind(on_release=popup.dismiss)
+            layout.add_widget(b)
+
+        else:
+            b1 = Decisions_Btn((layout.width / 2, layout.height / 2), "Agree to " + proposal, empire, self,
+                               size_hint=(0.5, 0.3))
+            b2 = Decisions_Btn((layout.width / 2, layout.height / 2), "Disagree to " + proposal, empire, self,
+                               size_hint=(0.5, 0.3))
+            layout.add_widget(b1)
+            layout.add_widget(b2)
+            b1.bind(on_release=popup.dismiss)
+            b2.bind(on_release=popup.dismiss)
+
+        popup.open()
+
+    def player_diplomacy_Popup(self, empire, proposal, response):
+        layout = GridLayout(cols=1, padding=10)
+        popup = Popup(title="Response from " + empire.name, content=layout, size_hint=(None, None), size=(400, 400),
+                      auto_dismiss=False)
+        if proposal == 'relations':
+            if empire == self.e1:
+                type = Label(text="Our relations with " + empire.name + " are " + str(self.dip1["relations"]),
+                             font_size=20, font_style='bold')
+                layout.add_widget(type)
+            else:
+                type = Label(text="Our relations with " + empire.name + " are " + str(self.dip3["relations"]),
+                             font_size=20, font_style='bold')
+                layout.add_widget(type)
+
+        elif proposal != 'War':
+            type = Label(text=empire.name + " " + response + " to " + proposal, font_size=18, font_style='bold')
+            layout.add_widget(type)
+
+        elif proposal == 'War':
+            type = Label(text="TO WAR!", font_size=32, font_style='bold')
+            layout.add_widget(type)
+
+        b = Button(text="ACKNOWLEDGED", font_size=28)
+        layout.add_widget(b)
+        popup.open()
+        b.bind(on_release=popup.dismiss)
+
+    def Lost_unit(self, loc):
+        sound = SoundLoader.load('assets/audio/unit_killed.mp3')
+        sound.play()
+        layout = GridLayout(cols=1, padding=10)
+        type = Label(text='We have lost a unit in tile' + str(loc[0]) + " " + str(loc[1]), font_size=24,
+                     font_style='bold')
+        layout.add_widget(type)
+        b = Button(text="ACKNOWLEDGED", font_size=28)
+        layout.add_widget(b)
+        popup = Popup(title="A TRAGIC LOSS", content=layout, size_hint=(None, None), size=(400, 400),
+                      auto_dismiss=False)
+        popup.open()
+        b.bind(on_release=popup.dismiss)
+
+    def update_labels(self, empire):
+        self.remove_widget(self.labels)
+        self.labels = GridLayout(rows=1, pos=(self.width * 0.1, self.height * 0.93), size_hint=(0.5, 0.05), spacing=10)
+        self.empire.update_titles()
+        for i in range(3):
+            self.labels.add_widget(
+                Button(text=self.textures[i] + " : " + str(empire.labels[i]), font_size=self.width / 80,
+                       font_style='Bold', background_normal=self.titles_source, background_down=self.titles_source_d))
+        self.add_widget(self.labels)
+
+    def update_year(self):
+        if self.year <= 250:
+            self.year += 5
+            self.turn += 1
+            self.year_button.text = ('Year : %d' % self.year)
+
+
+class Imperium(App):
+    def build(self):
+        global root
+        self.icon = os.path.join('assets', 'images', 'rome_symbol.png')
+        path = os.path.dirname(os.path.realpath(__file__))
+        os.chdir(path)
+        root = Imperium_Game()
+        return root
+
+
+if __name__ == '__main__':
+    Imperium().run()
