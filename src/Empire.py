@@ -20,6 +20,7 @@ class Empire:
         self.capital = capital
         self.manpower = manpower
         self.state = 'Peace'
+        self.capital_captured = False
         self.tile_arr = buildBoard(48, 70)
         self.labels = [self.manpower, self.stability, self.treasury]
 
