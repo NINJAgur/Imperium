@@ -1,18 +1,13 @@
 from kivy.uix.behaviors import ToggleButtonBehavior
-from kivy.uix.image import Image
-from src.constants import *
 from src.Hexes import *
-import os
 
 
 class Empire_Warship(ToggleButtonBehavior, Image):
-    def __init__(self, pos, loc, e1, e2, name, **kwargs):
+    def __init__(self, pos, loc, name, **kwargs):
         super(Empire_Warship, self).__init__(**kwargs)
         self.pos = pos
         self.size = (GetSystemMetrics(0) / POS_Y / 1.3, GetSystemMetrics(1) / POS_X / 1.3)
         self.loc = loc
-        self.e1_locs = e1
-        self.e2_locs = e2
         self.name = name
         self.score = 0
         self.power = 0
@@ -76,27 +71,30 @@ class Empire_Warship(ToggleButtonBehavior, Image):
             return
 
     def valid(self, unit, y, x):
-
         if locations[y][x] == 'm':
             return False
 
         if locations[y][x] == 'w' and type(unit) != Empire_Warship:
             return False
-        elif type(unit) == Empire_Warship and locations[y][x] != 'w' and locations[y][x] != 'p':
+
+        elif type(unit) == Empire_Warship and locations[y][x] != 'w':
             return False
 
         for hex in self.parent.children:
-            if type(hex) == Empire_HexTile and hex.loc[0] == y and hex.loc[
-                1] == x and hex.occupied == True and self.parent.parent.parent.empire.state != 'War':
+            if type(hex) == Empire_HexTile and hex.loc[0] == y and hex.loc[1] == x and hex.occupied == True and self.parent.parent.parent.empire.state != 'War':
                 return False
 
-        if unit.e1_locs[y][x] == 'O' or unit.e2_locs[y][x] == 'O' and self.parent.parent.parent.empire.state != 'War':
+        if (self.parent.parent.parent.e1.tile_arr[y][x] == 'O' or self.parent.parent.parent.e2.tile_arr[y][
+            x] == 'O') and self.parent.parent.parent.empire.state != 'War':
             if self.parent.parent.parent.dip1["military access"] == False and self.parent.parent.parent.dip3[
                 "military access"] == False:
                 return False
-            elif (unit.e1_locs[y][x] == 'O' and self.parent.parent.parent.dip1["military access"] == True) or (
-                    unit.e2_locs[y][x] == 'O' and self.parent.parent.parent.dip3["military access"] == True):
+            elif (self.parent.parent.parent.e1.tile_arr[y][x] == 'O' and self.parent.parent.parent.dip1[
+                "military access"] == True) or (
+                    self.parent.parent.parent.e2.tile_arr[y][x] == 'O' and self.parent.parent.parent.dip3[
+                "military access"] == True):
                 return True
+
         elif self.parent.parent.parent.empire.state == 'War' and ((self.parent.parent.parent.e1.state == 'War' and
                                                                    self.parent.parent.parent.e1.tile_arr[y][
                                                                        x] == 'O') or (
@@ -115,13 +113,11 @@ class Empire_Warship(ToggleButtonBehavior, Image):
 
 
 class Empire_Unit(ToggleButtonBehavior, Image):
-    def __init__(self, pos, loc, e1, e2, name, **kwargs):
+    def __init__(self, pos, loc, name, **kwargs):
         super(Empire_Unit, self).__init__(**kwargs)
         self.pos = pos
         self.size = (GetSystemMetrics(0) / POS_Y / 1.3, GetSystemMetrics(1) / POS_X / 1.3)
         self.loc = loc
-        self.e1_locs = e1
-        self.e2_locs = e2
         self.name = name
         self.score = 0
         self.power = 0
@@ -185,12 +181,12 @@ class Empire_Unit(ToggleButtonBehavior, Image):
             return
 
     def valid(self, unit, y, x):
-
         if locations[y][x] == 'm':
             return False
 
         if locations[y][x] == 'w' and type(unit) != Empire_Warship:
             return False
+
         elif type(unit) == Empire_Warship and locations[y][x] != 'w':
             return False
 
@@ -199,13 +195,12 @@ class Empire_Unit(ToggleButtonBehavior, Image):
                 1] == x and hex.occupied == True and self.parent.parent.parent.empire.state != 'War':
                 return False
 
-        if unit.e1_locs[y][x] == 'O' or unit.e2_locs[y][x] == 'O' and self.parent.parent.parent.empire.state != 'War':
-            if self.parent.parent.parent.dip1["military access"] == False and self.parent.parent.parent.dip3[
-                "military access"] == False:
+        if (self.parent.parent.parent.e1.tile_arr[y][x] == 'O' or self.parent.parent.parent.e2.tile_arr[y][x] == 'O') and self.parent.parent.parent.empire.state != 'War':
+            if self.parent.parent.parent.dip1["military access"] == False and self.parent.parent.parent.dip3["military access"] == False:
                 return False
-            elif (unit.e1_locs[y][x] == 'O' and self.parent.parent.parent.dip1["military access"] == True) or (
-                    unit.e2_locs[y][x] == 'O' and self.parent.parent.parent.dip3["military access"] == True):
+            elif (self.parent.parent.parent.e1.tile_arr[y][x] == 'O' and self.parent.parent.parent.dip1["military access"] == True) or (self.parent.parent.parent.e2.tile_arr[y][x] == 'O' and self.parent.parent.parent.dip3["military access"] == True):
                 return True
+
         elif self.parent.parent.parent.empire.state == 'War' and ((self.parent.parent.parent.e1.state == 'War' and self.parent.parent.parent.e1.tile_arr[y][x] == 'O') or (self.parent.parent.parent.e2.state == 'War' and self.parent.parent.parent.e2.tile_arr[y][x] == 'O')):
             return True
 
@@ -219,13 +214,11 @@ class Empire_Unit(ToggleButtonBehavior, Image):
 
 
 class Empire_Worker(ToggleButtonBehavior, Image):
-    def __init__(self, pos, loc, e1, e2, name, **kwargs):
+    def __init__(self, pos, loc, name, **kwargs):
         super(Empire_Worker, self).__init__(**kwargs)
         self.pos = pos
         self.size = (GetSystemMetrics(0) / POS_Y / 1.3, GetSystemMetrics(1) / POS_X / 1.3)
         self.loc = loc
-        self.e1_locs = e1
-        self.e2_locs = e2
         self.name = name
         self.score = 0
         self.war = False
@@ -285,12 +278,12 @@ class Empire_Worker(ToggleButtonBehavior, Image):
             return
 
     def valid(self, unit, y, x):
-
         if locations[y][x] == 'm':
             return False
 
-        if locations[y][x] == 'w':
+        if locations[y][x] == 'w' and type(unit) != Empire_Warship:
             return False
+
         elif type(unit) == Empire_Warship and locations[y][x] != 'w':
             return False
 
@@ -299,15 +292,18 @@ class Empire_Worker(ToggleButtonBehavior, Image):
                 1] == x and hex.occupied == True and self.parent.parent.parent.empire.state != 'War':
                 return False
 
-        if unit.e1_locs[y][x] == 'O' or unit.e2_locs[y][x] == 'O' and self.parent.parent.parent.empire.state != 'War':
+        if (self.parent.parent.parent.e1.tile_arr[y][x] == 'O' or self.parent.parent.parent.e2.tile_arr[y][
+            x] == 'O') and self.parent.parent.parent.empire.state != 'War':
             if self.parent.parent.parent.dip1["military access"] == False and self.parent.parent.parent.dip3[
                 "military access"] == False:
                 return False
-            elif (unit.e1_locs[y][x] == 'O' and self.parent.parent.parent.dip1["military access"] == True) or (
-                    unit.e2_locs[y][x] == 'O' and self.parent.parent.parent.dip3["military access"] == True):
+            elif (self.parent.parent.parent.e1.tile_arr[y][x] == 'O' and self.parent.parent.parent.dip1[
+                "military access"] == True) or (
+                    self.parent.parent.parent.e2.tile_arr[y][x] == 'O' and self.parent.parent.parent.dip3[
+                "military access"] == True):
                 return True
-        elif self.parent.parent.parent.empire.state == 'War' and ((self.parent.parent.parent.e1.state == 'War' and
-                                                                   self.parent.parent.parent.e1.tile_arr[y][
+
+        elif self.parent.parent.parent.empire.state == 'War' and ((self.parent.parent.parent.e1.state == 'War' and self.parent.parent.parent.e1.tile_arr[y][
                                                                        x] == 'O') or (
                                                                           self.parent.parent.parent.e2.state == 'War' and
                                                                           self.parent.parent.parent.e2.tile_arr[y][
