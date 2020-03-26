@@ -1,3 +1,16 @@
+"""
+Module Screens.py
+============
+
+This module contains all the Screen objects that are used by the ScreenManager in Imperium.py
+"""
+
+__version__ = '1.0'
+__author__ = 'Edan Gurin'
+
+'''
+Kivy imports
+'''
 from kivy.app import App
 from kivy.core.window import Window
 from kivy.uix.boxlayout import BoxLayout
@@ -7,12 +20,33 @@ from kivy.uix.screenmanager import Screen
 from kivy.uix.togglebutton import ToggleButton
 from kivy.uix.videoplayer import VideoPlayer
 
+'''
+src imports
+'''
 from src.Audio_Button import *
 from src.Sound_Effect import play_sound
 from src.constants import *
 
+"""
+_______NOTE_________ :
+Since most of the screens have similar parameters but can only be defined individually, here are the common param:
+img - Image class that is the background for all screens
+quit button - on_press of this button the app closes / transitions to previous screen
+Window.size - scaling according to system's native resolution
+TRANSITION BUTTONS - each screen has different configurations - see code
+Videos - tutorial screens contain VideoPlayer class provided by Kivy with loaded in mp4 
+
+SPECIAL SCREENS - SELECTION AND VICTORY - worth reading desc
+"""
+
 
 class MainMenu(Screen):
+    """
+    Class MainMenu(Screen)
+    ------------------------
+
+    Contains the main menu and connects all the screens - passage to other screens is only from this screen
+    """
     def __init__(self, **kw):
         super().__init__(**kw)
         Window.size = (GetSystemMetrics(0), GetSystemMetrics(1))
@@ -36,7 +70,7 @@ class MainMenu(Screen):
                       background_down=os.path.join('assets', 'images', '13_quit_d.png'), on_press=play_sound,
                       on_release=self.exit)
         version = Label(size_hint=(0.2, 0.08), pos_hint={"x": 0.4, "top": 0.8},
-                        text='IMPERIUM BETA 0.9 - SOUND AND SOUNDTRACK!')
+                        text='IMPERIUM BETA 1.0 - FINAL RELEASE!')
         self.audio.sound.play()
         self.add_widget(img)
         self.add_widget(logo)
@@ -46,6 +80,9 @@ class MainMenu(Screen):
         self.add_widget(self.audio)
         self.add_widget(quit)
 
+    '''
+    Screen Transition functions
+    '''
     def init_Selection(self, _):
         self.manager.current = 'Selection screen'
         self.manager.transition.direction = 'left'
@@ -61,6 +98,12 @@ class MainMenu(Screen):
 
 
 class Selection(Screen):
+    """
+        Class Selection(Screen)
+        ------------------------
+        Contains the empire selection screen with 3 empires to choose from - Rome, Carthage, Egypt
+        On press of the empire's icon the Main Game Screen is initiated with sent name of the empire.
+    """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         Window.size = (GetSystemMetrics(0), GetSystemMetrics(1))
@@ -116,6 +159,12 @@ class Selection(Screen):
 
 
 class Tutorial(Screen):
+    """
+        Class Tutorial(Screen)
+        ------------------------
+
+        Contains tutorial screen menu with transitions to specific screens using buttons
+    """
     def __init__(self, **kw):
         super().__init__(**kw)
         Window.size = (GetSystemMetrics(0), GetSystemMetrics(1))
@@ -161,6 +210,12 @@ class Tutorial(Screen):
 
 
 class Movement_Screen(Screen):
+    """
+        Class Movement_Screen(Screen)
+        ------------------------
+
+        Contains movement descriptions with videos
+    """
     def __init__(self, **kw):
         super().__init__(**kw)
         Window.size = (GetSystemMetrics(0), GetSystemMetrics(1))
@@ -206,6 +261,12 @@ class Movement_Screen(Screen):
 
 
 class Diplomacy_Screen(Screen):
+    """
+        Class Diplomacy_Screen(Screen)
+        ------------------------
+
+        Contains diplomacy and war management descriptions with videos
+    """
     def __init__(self, **kw):
         super().__init__(**kw)
         Window.size = (GetSystemMetrics(0), GetSystemMetrics(1))
@@ -239,6 +300,12 @@ class Diplomacy_Screen(Screen):
 
 
 class Resources_Screen(Screen):
+    """
+        Class Resources_Screen(Screen)
+        ------------------------
+
+        Contains resource and manpower management descriptions with videos
+    """
     def __init__(self, **kw):
         super().__init__(**kw)
         Window.size = (GetSystemMetrics(0), GetSystemMetrics(1))
@@ -272,46 +339,34 @@ class Resources_Screen(Screen):
 
 
 class Victory_Screen(Screen):
+    """
+        Class Victory_Screen(Screen)
+        ------------------------
+
+        Contains the final screen when the game is over with scores for each empire
+    """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         Window.size = (GetSystemMetrics(0), GetSystemMetrics(1))
 
     def init_scoring(self, empire1, empire2, empire3):
-        self.backgound = Image(source=os.path.join('assets', 'images', 'rome.png'), allow_stretch=True,
-                               keep_ratio=False, size=(GetSystemMetrics(0), GetSystemMetrics(1)))
-        img = Image(source=os.path.join('assets', 'images', 'rome_symbol.png'), allow_stretch=True, keep_ratio=False,
-                    size_hint=(.2, .3))
-        img2 = Image(source=os.path.join('assets', 'images', 'carthage_symbol.png'), allow_stretch=True,
-                     keep_ratio=False, size_hint=(.2, .3))
-        img3 = Image(source=os.path.join('assets', 'images', 'egypt_symbol.png'), allow_stretch=True, keep_ratio=False,
-                     size_hint=(.2, .3))
+        """
+        Function Method :
+            initialize scoring order and class param
+            ===============================
+        :param empire1: class of the victorious empire (in the center)
+        :param empire2: class of the loser empire
+        :param empire3: class of the loser empire
+        """
 
-        layout = BoxLayout(orientation='horizontal', size_hint=(0.95, 0.6), pos=(Window.width / 40, 50))
+        self.background = Image(source=os.path.join('assets', 'images', 'rome.png'), allow_stretch=True, keep_ratio=False, size=(GetSystemMetrics(0), GetSystemMetrics(1)))
+
+
+        layout = BoxLayout(orientation='horizontal', size_hint=(0.95, 0.6), pos=(Window.width / 40, 50)) # box layout containing all the information in the screen
         layout1 = BoxLayout(orientation='vertical')
         layout2 = BoxLayout(orientation='vertical')
         layout3 = BoxLayout(orientation='vertical')
-
-        self.props = [empire1.name + 's treasury: ' + str(empire1.treasury),
-                      empire1.name + 's stability: ' + str(empire1.stability),
-                      empire1.name + 's manpower: ' + str(empire1.manpower),
-                      empire1.name + 's units deployed: ' + str(empire1.army),
-                      empire1.name + 's slave units: ' + str(empire1.workers),
-                      empire1.name + 's farm tiles: ' + str(empire1.farms),
-                      empire1.name + 's total territory: ' + str(empire1.tiles) + ' tiles']
-
-        for i in range(len(self.props)):
-            layout1.add_widget(Button(text=str(self.props[i])))
-        layout.add_widget(layout1)
-
-        if empire1.name == 'Rome':
-            img.pos = (Window.width * 0.1, Window.height * 0.7)
-            self.add_widget(img)
-        elif empire1.name == 'Carthage':
-            img2.pos = (Window.width * 0.1, Window.height * 0.7)
-            self.add_widget(img2)
-        elif empire1.name == 'Egypt':
-            img3.pos = (Window.width * 0.1, Window.height * 0.7)
-            self.add_widget(img3)
+        victor = Label(size_hint=(0.3, 0.15), pos_hint={"x": 0.35, "top": 0.8}, text=empire1.name + ' has won the game!', font_size= 48) # label displaying the victor of the game
 
         if empire2 != None:
             self.props2 = [empire2.name + 's treasury: ' + str(empire2.treasury),
@@ -326,15 +381,16 @@ class Victory_Screen(Screen):
                 layout2.add_widget(Button(text=self.props2[i]))
             layout.add_widget(layout2)
 
-            if empire2.name == 'Rome':
-                img.pos = (Window.width * 0.4, Window.height * 0.7)
-                self.add_widget(img)
-            elif empire2.name == 'Carthage':
-                img2.pos = (Window.width * 0.4, Window.height * 0.7)
-                self.add_widget(img2)
-            elif empire2.name == 'Egypt':
-                img3.pos = (Window.width * 0.4, Window.height * 0.7)
-                self.add_widget(img3)
+        self.props = [empire1.name + 's treasury: ' + str(empire1.treasury),
+                      empire1.name + 's stability: ' + str(empire1.stability),
+                      empire1.name + 's manpower: ' + str(empire1.manpower),
+                      empire1.name + 's units deployed: ' + str(empire1.army),
+                      empire1.name + 's slave units: ' + str(empire1.workers),
+                      empire1.name + 's farm tiles: ' + str(empire1.farms),
+                      empire1.name + 's total territory: ' + str(empire1.tiles) + ' tiles']
+        for i in range(len(self.props)):
+            layout1.add_widget(Button(text=str(self.props[i])))
+        layout.add_widget(layout1)
 
         if empire3 != None:
             self.props3 = [empire3.name + 's treasury: ' + str(empire3.treasury),
@@ -344,23 +400,14 @@ class Victory_Screen(Screen):
                            empire3.name + 's slave units: ' + str(empire3.workers),
                            empire3.name + 's farm tiles: ' + str(empire3.farms),
                            empire3.name + 's total territory: ' + str(empire3.tiles) + ' tiles']
-
             for i in range(len(self.props3)):
                 layout3.add_widget(Button(text=self.props3[i]))
             layout.add_widget(layout3)
 
-            if empire3.name == 'Rome':
-                img.pos = (Window.width * 0.7, Window.height * 0.7)
-                self.add_widget(img)
-            elif empire3.name == 'Carthage':
-                img2.pos = (Window.width * 0.7, Window.height * 0.7)
-                self.add_widget(img2)
-            elif empire3.name == 'Egypt':
-                img3.pos = (Window.width * 0.7, Window.height * 0.7)
-                self.add_widget(img3)
 
         self.add_widget(self.background)
         self.add_widget(layout)
+        self.add_widget(victor)
         exit = Button(size_hint=(0.1, 0.05), pos=(Window.width - Window.width / 10, Window.height - Window.height / 20),
                       background_normal=os.path.join('assets', 'images', '26_go_back_u.png'),
                       background_down=os.path.join('assets', 'images', '25_go_back_d.png'), on_press=play_sound)

@@ -1,14 +1,26 @@
-import os
-from kivy.core.image import Image as CoreImage
-from src.constants import *
+"""
+Module Support_func.py
+============
+
+This module contains global support functions
+"""
+
+__version__ = '1.0'
+__author__ = 'Edan Gurin'
+
+'''
+src imports
+'''
+
 from src.Units import *
 from src.constants import buildBoard
 
-dis_height = 48 / 2
-dis_width = 43 / 2
 
-background = CoreImage(os.path.join('assets', 'images', 'finalmap.png'))
+background = CoreImage(os.path.join('assets', 'images', 'finalmap.png')) # core image for finalmap with loaded source
 
+'''
+setting values for list locations constant in for loop and pixel read method (see Board class)
+'''
 for i in range(48):
     for j in range(70):
         coor_x = 0
@@ -33,8 +45,22 @@ for i in range(48):
         else:
             locations[i][j] = 'c'
 
+
 def buildMap(empire, empire2, empire3):
-    empire_map = buildBoard(48, 70)
+    """
+    Function Method :
+        initialize empire tiles map for minimax
+        =======================================
+
+    :param empire: Rome Empire class
+    :param empire2: Carthage Empire class
+    :param empire3: Egypt Empire class
+    :return: empire_map list
+    """
+    empire_map = buildBoard(48, 70) # empire map list init with buildboard()
+    '''
+    setting values for empire_map list constant in for loop and pixel read method (see Board class)
+    '''
     for i in range(48):
         for j in range(70):
             if empire.tile_arr[i][j] == 'O':
@@ -60,7 +86,21 @@ def buildMap(empire, empire2, empire3):
 
 
 def units_Map(empire, empire2, empire3):
-    unit_map = buildBoard(48, 70)
+    """
+    Function Method :
+        initialize unit locations map for minimax
+        =========================================
+
+    :param empire: Rome Empire class
+    :param empire2: Carthage Empire class
+    :param empire3: Egypt Empire class
+    :return: unit_list list
+    """
+    unit_map = buildBoard(48, 70) # unit_map list init with buildboard()
+
+    '''
+    function creates map values based on the first letter of the empire + unit class letter (unit, worker, ship)
+    '''
     for unit in empire.units:
         if type(unit) == Empire_Unit:
             unit_map[unit.loc[0]][unit.loc[1]] = 'RU'
