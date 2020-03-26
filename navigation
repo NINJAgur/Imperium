@@ -1,0 +1,25 @@
+Imperium_root/
+│
+├── Imperium.py/  - Project main source code
+├── Imperium.kv/  - kivy file for global kivy settings for the project
+├── requirements  - technical requirements to run the project
+
+├── assets/
+    ├── audio/    - all the audio files in the project (in mp3 format)
+    ├── images/   - all the sources for images in the project
+    ├── images/   - all the video files in the project (in mp4 format)
+
+├── src/ (further explanation in the files themselves)
+    ├── __init_.py/         - project init
+    ├── A_star.py/          - A* Algorithm with Node class
+    ├── constants.py/       - project constants
+    ├── Empire.py/          - Empire class
+    ├── Hexes.py            - Hexes file with Hex classes
+    ├── Info_Button.py/     - Info Button class
+    ├── Next_Turn_Button.py/- Next-Turn Button class
+    ├── Screens.py/         - Screens file with Screen classes
+    ├── Units.py/           - Units file with Unit classes
+
+
+├── README        - project description
+├── LICENSE       - Standard MIT license provided by Github
