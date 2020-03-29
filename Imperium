@@ -2339,9 +2339,9 @@ class MainGame(Screen):
             '''RELATIONS WITH EMPIRE 2'''
             if empire.dip1["relations"] > -100: # case relations with empire are not on the verge of war
                 if empire.dip1["relations"] >= -10 and empire.dip1["trade agreement"] == False: # trade agreement
-                    income = empire.treasury + empire.tiles * 10 + empire.farms * 50 + len(empire.cities) * 100 # empire's income
-                    if (len(empire.rival_empires[0].cities) * 100 / income) * 10 > 20: # check if its worth having a
-                        # trade agreement (trade deal isnt 20% of the empire's income
+                    income = empire.treasury + empire.tiles * 10 + empire.farms * 50  # empire's income
+                    if (len(empire.rival_empires[0].cities) * 100 / income) * 100 > 10: # check if its worth having a
+                        # trade agreement (trade deal isnt 10% of the empire's income)
                         if version: # graphical implementation - popup decision for player
                             self.decisions_Popup(empire, "trade agreement")
                         else:
@@ -2407,9 +2407,8 @@ class MainGame(Screen):
             '''RELATIONS WITH EMPIRE 2'''
             if empire.dip2["relations"] > -100:  # case relations with empire are not on the verge of war
                 if empire.dip2["relations"] >= -10 and empire.dip2["trade agreement"] == False:  # trade agreement
-                    income = empire.treasury + empire.tiles * 10 + empire.farms * 50 + len(
-                        empire.cities) * 100  # empire's income
-                    if (len(empire.rival_empires[1].cities) * 100 / income) * 10 > 20:  # check if its worth having a
+                    income = empire.treasury + empire.tiles * 10 + empire.farms * 50   # empire's income
+                    if (len(empire.rival_empires[1].cities) * 100 / income) * 100 > 10:  # check if its worth having a
                         # trade agreement (trade deal isnt 10% of the empire's income
                         if version:  # graphical implementation - popup decision for player
                             self.decisions_Popup(empire, "trade agreement")
