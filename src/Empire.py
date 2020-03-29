@@ -87,13 +87,27 @@ class Empire:
                             num_tiles2 += self.parent_widget.check_neighbour(i, j, self)
 
         # calculate relations with empire 1 and empire 2
-        if self.rival_empires[0].state == 'War' and self.state == 'War':
-            self.dip1["relations"] = -100
-        else:
-            self.dip1["relations"] = num_tiles1 * (-5) + (self.rival_empires[0].army + random.randint(-1, 1)) * 10 + (self.army + random.randint(-1, 1)) * -10
-        if self.rival_empires[1].state == 'War' and self.state == 'War':
-            self.dip2["relations"] = -100
-        else:
-            self.dip2["relations"] = num_tiles1 * (-5) + (self.rival_empires[1].army + random.randint(-1, 1)) * 10 + (self.army + random.randint(-1, 1)) * -10
+        if self.state == 'War':
+            if self.name == self.parent_widget.empire.name:
+                if self.rival_empires[0].state == 'War':
+                    self.rival_empires[0].dip1["relations"] = -100
+                else:
+                    self.dip1["relations"] = num_tiles1 * (-5) + (self.rival_empires[0].army + random.randint(-1, 1)) * 10 + (self.army + random.randint(-1, 1)) * -10
 
+                if self.rival_empires[1].state == 'War':
+                    self.rival_empires[1].dip1["relations"] = -100
+                else:
+                    self.dip1["relations"] = num_tiles2 * (-5) + (self.rival_empires[1].army + random.randint(-1, 1)) * 10 + (self.army + random.randint(-1, 1)) * -10
+            else:
+                if self.rival_empires[0].state == 'War':
+                    self.rival_empires[0].dip1["relations"] = -100
+                else:
+                    self.dip1["relations"] = num_tiles1 * (-5) + (self.rival_empires[0].army + random.randint(-1, 1)) * 10 + (self.army + random.randint(-1, 1)) * -10
 
+                if self.rival_empires[1].state == 'War':
+                    self.rival_empires[1].dip2["relations"] = -100
+                else :
+                    self.dip2["relations"] = num_tiles2 * (-5) + (self.rival_empires[1].army + random.randint(-1, 1)) * 10 + (self.army + random.randint(-1, 1)) * -10
+        else:
+            self.dip1["relations"] = num_tiles1 * (-5) + (self.rival_empires[0].army + random.randint(-1, 0)) * -10 + (self.army + random.randint(0, 1)) * 10
+            self.dip2["relations"] = num_tiles2 * (-5) + (self.rival_empires[1].army + random.randint(-1, 0)) * -10 + (self.army + random.randint(0, 1)) * 10
