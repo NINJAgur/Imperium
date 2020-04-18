@@ -43,7 +43,7 @@ from src.Support_func import *
 from src.Next_Turn_Button import *
 from src.Screens import *
 
-#Window.fullscreen = True  # fullscreen setting
+Window.fullscreen = True  # fullscreen setting
 
 '===================================================================================='
 '''
@@ -401,7 +401,6 @@ class Board(Widget):
         """
         self.size = (3200, 2500)  # default size
         self.size_hint = (None, None)  # size hint to accomdate possible infinite size for Scrollview object
-        self.arr = []  # array containing all hex objects
         self.player_empire = player_empire  # String player empire name
         background = CoreImage(os.path.join('assets', 'images',
                                             'finalmap.png'))  # background Image for pixel reading method developed by me
@@ -958,7 +957,6 @@ class Board(Widget):
         else:
             return False
 
-
     def hex_info(self, hex):
         """
         Function Method :
@@ -1205,6 +1203,7 @@ class MainGame(Screen):
         if self.e1.state != 'Defeat':
             # check for victory
             self.checkWin()
+
             # update empire's resources
             self.e1.update_treasury()
             self.e1.update_manpower()
@@ -1258,6 +1257,7 @@ class MainGame(Screen):
         if self.e2.state != 'Defeat':
             # check for victory
             self.checkWin()
+
             # update empire's resources
             self.e2.update_treasury()
             self.e2.update_manpower()
@@ -1316,8 +1316,7 @@ class MainGame(Screen):
         the other 2 are minimizers.
         In a given state if the maximizer has upper hand then, the score of the board will tend to be positive value.
         If the minimizer has the upper hand in that board state then it will tend to be some negative value. The values
-        of the board are calculated by some heuristics which are unique for every
-        type of game.
+        of the board are calculated by some heuristics which are unique for every type of game.
 
         ALPHA - BETA PRUNING FOR MINIMAX :
         ------------------------------------------------------------------
@@ -1359,7 +1358,7 @@ class MainGame(Screen):
         """
         Each empire processes it's own turn starting from the minimaxed empire, then rival empire 1, 
         rival empire2 and vise versa. Each empire turn begins with defining bestVal - if the empire is the MAXIMIZER, 
-        bestVal will be MIN (and slowly rise to max value), else bestVal will be MAX so the maximizer gets min 
+        bestVal will be MIN (and slowly rise to max value), else bestVal will be MAX so the MINIMIZER gets min 
         possible value. Then the empire runs in a for loop across all possible decision packs in that turn, 
         unpacks it (changing the clone board) and moves it to next empire for minimax. Once the backtracking recursion
         starts, the value is returned to the empire and bestValue is compared to the return value together with best 
@@ -2340,6 +2339,7 @@ class MainGame(Screen):
             if empire.dip1["relations"] > -100: # case relations with empire are not on the verge of war
                 if empire.dip1["relations"] >= -10 and empire.dip1["trade agreement"] == False: # trade agreement
                     income = empire.treasury + empire.tiles * 10 + empire.farms * 50  # empire's income
+
                     if (len(empire.rival_empires[0].cities) * 100 / income) * 100 > 10: # check if its worth having a
                         # trade agreement (trade deal isnt 10% of the empire's income)
                         if version: # graphical implementation - popup decision for player
@@ -2410,33 +2410,23 @@ class MainGame(Screen):
                     income = empire.treasury + empire.tiles * 10 + empire.farms * 50   # empire's income
                     if (len(empire.rival_empires[1].cities) * 100 / income) * 100 > 10:  # check if its worth having a
                         # trade agreement (trade deal isnt 10% of the empire's income
-                        if version:  # graphical implementation - popup decision for player
-                            self.decisions_Popup(empire, "trade agreement")
-                        else:
-                            empire.dip2["trade agreement"] = True
-                            empire3.dip2["trade agreement"] = True
+                        empire.dip2["trade agreement"] = True
+                        empire3.dip2["trade agreement"] = True
 
                 elif empire.dip2["relations"] >= 40 and self.supremacy(empire3, empire) and empire.dip2[
                     "non aggression"] != True:  # non- aggression pact - based if the empire feels threatened by empire3
-                    if version:  # graphical implementation - popup decision for player
-                        self.decisions_Popup(empire, "non aggression")
-                    else:
-                        empire.dip2["non aggression"] = True
-                        empire3.dip2["non aggression"] = True
+                    empire.dip2["non aggression"] = True
+                    empire3.dip2["non aggression"] = True
 
                 elif empire.dip2["relations"] >= 70 and self.supremacy(empire, empire3) and empire.dip2[
                     "military access"] != True:  # if empire feels superior to empire3 it will request military access
-                    if version:  # graphical implementation - popup decision for player
-                        self.decisions_Popup(empire, "military access")
-                    else:
-                        empire.dip2["non aggression"] = True
-                        empire3.dip2["non aggression"] = True
+                     # graphical implementation - popup decision for player
+                    empire.dip2["non aggression"] = True
+                    empire3.dip2["non aggression"] = True
 
                 elif empire.dip2["relations"] <= -80 and empire.dip2["war"] != True and empire.dip2[
                     "non aggression"] == False:  # case war possiblity
                     if self.supremacy(empire, empire3):  # if the empire feels eels superior to empire3 - > declares war
-                        if version:  # graphical implementation - popup decision for player
-                            self.decisions_Popup(empire, "War")
                         # set both empire's state to war
                         empire3.state = 'War'
                         empire3.dip2["trade agreement"] = False
@@ -2449,8 +2439,6 @@ class MainGame(Screen):
                         empire.dip2["non aggression"] = False
                         empire.dip2["military access"] = False
                     elif empire.treasury >= 1000:  # else if empire feels threatened by empire3 - > it will give it gold to sign non- aggression
-                        if version:  # graphical implementation - popup decision for player
-                            self.decisions_Popup(empire, "appeasement")
                         empire3.treasury += 1000
                         empire.treasury -= 1000
                         empire.dip2["non aggression"] = True
@@ -2458,8 +2446,6 @@ class MainGame(Screen):
 
             elif empire.dip2["relations"] < -100 and empire.dip2["war"] != True and empire.dip2[
                 "non aggression"] == False:  # if empire and empire3 relations are at critical point -> war is imminent
-                if version:  # graphical implementation - popup decision for player
-                    self.decisions_Popup(empire, "War")
                 # set both empire's state to war
                 empire3.state = 'War'
                 empire3.dip2["trade agreement"] = False
